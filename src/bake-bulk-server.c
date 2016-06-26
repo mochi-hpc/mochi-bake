@@ -31,6 +31,8 @@ int main(int argc, char **argv)
     margo_instance_id mid;
     ABT_xstream handler_xstream;
     ABT_pool handler_pool;
+    ABT_xstream progress_xstream;
+    ABT_pool progress_pool;
     hg_context_t *hg_context;
     hg_class_t *hg_class;
     char target_string[64];
@@ -109,13 +111,21 @@ int main(int argc, char **argv)
         return(-1);
     }
 
+    /* create a dedicated ES drive Mercury progress */
+    ret = ABT_snoozer_xstream_create(1, &progress_pool, &progress_xstream);
+    if(ret != 0)
+    {
+        fprintf(stderr, "Error: ABT_snoozer_xstream_create()\n");
+        return(-1);
+    }
+
     /* actually start margo */
     /* provide argobots pools for driving communication progress and
      * executing rpc handlers as well as class and context for Mercury
      * communication.
      */
     /***************************************/
-    mid = margo_init_pool(handler_pool, handler_pool, hg_context);
+    mid = margo_init_pool(progress_pool, handler_pool, hg_context);
     assert(mid);
 
     /* register RPCs */
@@ -158,6 +168,9 @@ int main(int argc, char **argv)
      * ABT pool.
      */
     margo_wait_for_finalize(mid);
+
+    ABT_xstream_join(progress_xstream);
+    ABT_xstream_free(&progress_xstream);
 
     ABT_finalize();
 
