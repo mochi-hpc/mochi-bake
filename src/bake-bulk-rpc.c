@@ -21,6 +21,11 @@ typedef struct {
     uint64_t size;
 } pmemobj_region_id_t;
 
+static ABT_mutex io_conc_mutex = ABT_MUTEX_NULL;
+static ABT_cond io_conc_cond = ABT_COND_NULL;
+static int io_conc_nr = 0;
+#define IO_CONC_MAX 4
+
 /* service a remote RPC that instructs the server daemon to shut down */
 static void bake_bulk_shutdown_ult(hg_handle_t handle)
 {
@@ -38,6 +43,9 @@ static void bake_bulk_shutdown_ult(hg_handle_t handle)
     assert(hret == HG_SUCCESS);
 
     HG_Destroy(handle);
+
+    ABT_mutex_free(&io_conc_mutex);
+    ABT_cond_free(&io_conc_cond);
 
     /* NOTE: we assume that the server daemon is using
      * margo_wait_for_finalize() to suspend until this RPC executes, so there
@@ -96,6 +104,12 @@ static void bake_bulk_write_ult(hg_handle_t handle)
     margo_instance_id mid;
     pmemobj_region_id_t* prid;
 
+    ABT_mutex_lock(io_conc_mutex);
+    while(io_conc_nr >= IO_CONC_MAX)
+        ABT_cond_wait(io_conc_cond, io_conc_mutex);
+    io_conc_nr++;
+    ABT_mutex_unlock(io_conc_mutex);
+
     // printf("Got RPC request to write bulk region.\n");
     
     memset(&out, 0, sizeof(out));
@@ -110,6 +124,10 @@ static void bake_bulk_write_ult(hg_handle_t handle)
         out.ret = -1;
         HG_Respond(handle, NULL, NULL, &out);
         HG_Destroy(handle);
+        ABT_mutex_lock(io_conc_mutex);
+            io_conc_nr--;
+            ABT_cond_signal(io_conc_cond);
+        ABT_mutex_unlock(io_conc_mutex);
         return;
     }
 
@@ -123,6 +141,10 @@ static void bake_bulk_write_ult(hg_handle_t handle)
         HG_Free_input(handle, &in);
         HG_Respond(handle, NULL, NULL, &out);
         HG_Destroy(handle);
+        ABT_mutex_lock(io_conc_mutex);
+            io_conc_nr--;
+            ABT_cond_signal(io_conc_cond);
+        ABT_mutex_unlock(io_conc_mutex);
         return;
     }
 
@@ -137,6 +159,10 @@ static void bake_bulk_write_ult(hg_handle_t handle)
         HG_Free_input(handle, &in);
         HG_Respond(handle, NULL, NULL, &out);
         HG_Destroy(handle);
+        ABT_mutex_lock(io_conc_mutex);
+            io_conc_nr--;
+            ABT_cond_signal(io_conc_cond);
+        ABT_mutex_unlock(io_conc_mutex);
         return;
     }
 
@@ -149,6 +175,10 @@ static void bake_bulk_write_ult(hg_handle_t handle)
         HG_Free_input(handle, &in);
         HG_Respond(handle, NULL, NULL, &out);
         HG_Destroy(handle);
+        ABT_mutex_lock(io_conc_mutex);
+            io_conc_nr--;
+            ABT_cond_signal(io_conc_cond);
+        ABT_mutex_unlock(io_conc_mutex);
         return;
     }
 
@@ -158,6 +188,10 @@ static void bake_bulk_write_ult(hg_handle_t handle)
     HG_Free_input(handle, &in);
     HG_Respond(handle, NULL, NULL, &out);
     HG_Destroy(handle);
+    ABT_mutex_lock(io_conc_mutex);
+        io_conc_nr--;
+        ABT_cond_signal(io_conc_cond);
+    ABT_mutex_unlock(io_conc_mutex);
     return;
 }
 DEFINE_MARGO_RPC_HANDLER(bake_bulk_write_ult)
@@ -322,6 +356,12 @@ static void bake_bulk_read_ult(hg_handle_t handle)
     margo_instance_id mid;
     pmemobj_region_id_t* prid;
 
+    ABT_mutex_lock(io_conc_mutex);
+    while(io_conc_nr >= IO_CONC_MAX)
+        ABT_cond_wait(io_conc_cond, io_conc_mutex);
+    io_conc_nr++;
+    ABT_mutex_unlock(io_conc_mutex);
+
     // printf("Got RPC request to read bulk region.\n");
     
     memset(&out, 0, sizeof(out));
@@ -336,6 +376,10 @@ static void bake_bulk_read_ult(hg_handle_t handle)
         out.ret = -1;
         HG_Respond(handle, NULL, NULL, &out);
         HG_Destroy(handle);
+        ABT_mutex_lock(io_conc_mutex);
+            io_conc_nr--;
+            ABT_cond_signal(io_conc_cond);
+        ABT_mutex_unlock(io_conc_mutex);
         return;
     }
 
@@ -349,6 +393,10 @@ static void bake_bulk_read_ult(hg_handle_t handle)
         HG_Free_input(handle, &in);
         HG_Respond(handle, NULL, NULL, &out);
         HG_Destroy(handle);
+        ABT_mutex_lock(io_conc_mutex);
+            io_conc_nr--;
+            ABT_cond_signal(io_conc_cond);
+        ABT_mutex_unlock(io_conc_mutex);
         return;
     }
 
@@ -363,6 +411,10 @@ static void bake_bulk_read_ult(hg_handle_t handle)
         HG_Free_input(handle, &in);
         HG_Respond(handle, NULL, NULL, &out);
         HG_Destroy(handle);
+        ABT_mutex_lock(io_conc_mutex);
+            io_conc_nr--;
+            ABT_cond_signal(io_conc_cond);
+        ABT_mutex_unlock(io_conc_mutex);
         return;
     }
 
@@ -375,6 +427,10 @@ static void bake_bulk_read_ult(hg_handle_t handle)
         HG_Free_input(handle, &in);
         HG_Respond(handle, NULL, NULL, &out);
         HG_Destroy(handle);
+        ABT_mutex_lock(io_conc_mutex);
+            io_conc_nr--;
+            ABT_cond_signal(io_conc_cond);
+        ABT_mutex_unlock(io_conc_mutex);
         return;
     }
 
@@ -384,6 +440,10 @@ static void bake_bulk_read_ult(hg_handle_t handle)
     HG_Free_input(handle, &in);
     HG_Respond(handle, NULL, NULL, &out);
     HG_Destroy(handle);
+    ABT_mutex_lock(io_conc_mutex);
+        io_conc_nr--;
+        ABT_cond_signal(io_conc_cond);
+    ABT_mutex_unlock(io_conc_mutex);
     return;
 }
 DEFINE_MARGO_RPC_HANDLER(bake_bulk_read_ult)
@@ -454,6 +514,12 @@ static void bake_bulk_probe_ult(hg_handle_t handle)
 
     out.ret = 0;
     out.bti = g_bake_bulk_root->target_id;
+
+    /* initialize concurrency mutex and cond if needed */
+    if(io_conc_mutex == ABT_MUTEX_NULL)
+        ABT_mutex_create(&io_conc_mutex);
+    if(io_conc_cond == ABT_COND_NULL)
+        ABT_cond_create(&io_conc_cond);
 
     HG_Respond(handle, NULL, NULL, &out);
     HG_Destroy(handle);
