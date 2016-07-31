@@ -353,7 +353,7 @@ static int bake_bulk_eager_write(
     return(ret);
 }
 
-#define BAKE_BULK_EAGER_LIMIT 4096
+#define BAKE_BULK_EAGER_LIMIT 2048
 
 int bake_bulk_write(
     bake_target_id_t bti,
