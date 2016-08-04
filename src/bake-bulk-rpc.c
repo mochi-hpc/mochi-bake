@@ -24,7 +24,7 @@ typedef struct {
 static ABT_mutex io_conc_mutex = ABT_MUTEX_NULL;
 static ABT_cond io_conc_cond = ABT_COND_NULL;
 static int io_conc_nr = 0;
-#define IO_CONC_MAX 16
+#define IO_CONC_MAX 4
 
 /* service a remote RPC that instructs the server daemon to shut down */
 static void bake_bulk_shutdown_ult(hg_handle_t handle)
