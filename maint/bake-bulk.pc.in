@@ -7,6 +7,6 @@ Name: bake-bulk
 Description: bulk data access service
 Version: 0.1
 URL: https://xgitlab.cels.anl.gov/sds/bake-bulk
-Requires: margo uuid libpmemobj
+Requires: margo uuid libpmemobj hg-bulk-pool
 Libs: -L${libdir} -lbake-bulk
 Cflags: -I${includedir}
