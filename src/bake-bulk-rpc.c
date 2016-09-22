@@ -8,6 +8,7 @@
 #include <libpmemobj.h>
 
 #include "bake-bulk-rpc.h"
+#include "bake-pool.h"
 
 /* TODO: this should not be global in the long run; server may provide access
  * to multiple targets
@@ -91,7 +92,11 @@ static void bake_bulk_write_ult(hg_handle_t handle)
     hg_return_t hret;
     char* buffer;
     hg_size_t size;
-    hg_bulk_t bulk_handle;
+    hg_bulk_t bulk_handle = HG_BULK_NULL;
+    void *pool_bulk_buf = NULL;
+    hg_size_t pool_bulk_size;
+    hg_uint32_t pool_bulk_segments_found;
+    int get_pool_success;
     struct hg_info *hgi;
     margo_instance_id mid;
     pmemobj_region_id_t* prid;
@@ -126,22 +131,38 @@ static void bake_bulk_write_ult(hg_handle_t handle)
         return;
     }
 
-    size = HG_Bulk_get_size(in.bulk_handle);
+    size = in.region_size;
 
-    /* create bulk handle for local side of transfer */
-    hret = HG_Bulk_create(hgi->hg_class, 1, (void**)(&buffer), &size, 
-        HG_BULK_WRITE_ONLY, &bulk_handle);
-    if(hret != HG_SUCCESS)
-    {
-        out.ret = -1;
-        HG_Free_input(handle, &in);
-        HG_Respond(handle, NULL, NULL, &out);
-        HG_Destroy(handle);
-        return;
+    /* make the "to pool or not to pool" decision */
+    if (is_pool_enabled()) {
+        bulk_handle = get_pool_bulk(size, HG_BULK_WRITE_ONLY);
+        if (bulk_handle != HG_BULK_NULL) {
+            pool_bulk_segments_found = 0;
+            hret = HG_Bulk_access(bulk_handle, 0, size, HG_BULK_WRITE_ONLY, 1,
+                    &pool_bulk_buf, &pool_bulk_size, &pool_bulk_segments_found);
+            assert(hret == HG_SUCCESS &&
+                    size <= pool_bulk_size &&
+                    pool_bulk_segments_found == 1);
+        }
+    }
+    get_pool_success = (bulk_handle != HG_BULK_NULL);
+
+    if (!get_pool_success) {
+        /* create bulk handle for local side of transfer */
+        hret = HG_Bulk_create(hgi->hg_class, 1, (void**)(&buffer), &size, 
+            HG_BULK_WRITE_ONLY, &bulk_handle);
+        if(hret != HG_SUCCESS)
+        {
+            out.ret = -1;
+            HG_Free_input(handle, &in);
+            HG_Respond(handle, NULL, NULL, &out);
+            HG_Destroy(handle);
+            return;
+        }
     }
 
     hret = margo_bulk_transfer(mid, HG_BULK_PULL, hgi->addr, in.bulk_handle,
-        0, bulk_handle, 0, size);
+        in.bulk_offset, bulk_handle, 0, size);
     if(hret != HG_SUCCESS)
     {
         out.ret = -1;
@@ -152,9 +173,16 @@ static void bake_bulk_write_ult(hg_handle_t handle)
         return;
     }
 
+    /* if using the pool, then also need to memcpy out */
+    if (get_pool_success) {
+        memcpy(buffer, pool_bulk_buf, size);
+        release_pool_bulk(size, bulk_handle, HG_BULK_WRITE_ONLY);
+    }
+    else
+        HG_Bulk_free(bulk_handle);
+
     out.ret = 0;
 
-    HG_Bulk_free(bulk_handle);
     HG_Free_input(handle, &in);
     HG_Respond(handle, NULL, NULL, &out);
     HG_Destroy(handle);
@@ -170,9 +198,7 @@ static void bake_bulk_eager_write_ult(hg_handle_t handle)
     bake_bulk_eager_write_in_t in;
     hg_return_t hret;
     char* buffer;
-    hg_bulk_t bulk_handle;
     struct hg_info *hgi;
-    margo_instance_id mid;
     pmemobj_region_id_t* prid;
 
     // printf("Got RPC request to write bulk region.\n");
@@ -181,7 +207,6 @@ static void bake_bulk_eager_write_ult(hg_handle_t handle)
 
     hgi = HG_Get_info(handle);
     assert(hgi);
-    mid = margo_hg_class_to_instance(hgi->hg_class);
 
     hret = HG_Get_input(handle, &in);
     if(hret != HG_SUCCESS)
@@ -318,6 +343,10 @@ static void bake_bulk_read_ult(hg_handle_t handle)
     char* buffer;
     hg_size_t size;
     hg_bulk_t bulk_handle;
+    void *pool_bulk_buf = NULL;
+    hg_size_t pool_bulk_size;
+    hg_uint32_t pool_bulk_segments_found;
+    int get_pool_success;
     struct hg_info *hgi;
     margo_instance_id mid;
     pmemobj_region_id_t* prid;
@@ -352,22 +381,40 @@ static void bake_bulk_read_ult(hg_handle_t handle)
         return;
     }
 
-    size = HG_Bulk_get_size(in.bulk_handle);
+    size = in.region_size;
 
-    /* create bulk handle for local side of transfer */
-    hret = HG_Bulk_create(hgi->hg_class, 1, (void**)(&buffer), &size, 
-        HG_BULK_READ_ONLY, &bulk_handle);
-    if(hret != HG_SUCCESS)
-    {
-        out.ret = -1;
-        HG_Free_input(handle, &in);
-        HG_Respond(handle, NULL, NULL, &out);
-        HG_Destroy(handle);
-        return;
+    /* make the "to pool or not to pool" decision */
+    if (is_pool_enabled()) {
+        bulk_handle = get_pool_bulk(size, HG_BULK_READ_ONLY);
+        if (bulk_handle != HG_BULK_NULL) {
+            pool_bulk_segments_found = 0;
+            hret = HG_Bulk_access(bulk_handle, 0, size, HG_BULK_READ_ONLY, 1,
+                    &pool_bulk_buf, &pool_bulk_size, &pool_bulk_segments_found);
+            assert(hret == HG_SUCCESS &&
+                    size <= pool_bulk_size &&
+                    pool_bulk_segments_found == 1);
+            /* also need to memcpy in the data */
+            memcpy(pool_bulk_buf, buffer, size);
+        }
+    }
+    get_pool_success = (bulk_handle != HG_BULK_NULL);
+
+    if (!get_pool_success) {
+        /* create bulk handle for local side of transfer */
+        hret = HG_Bulk_create(hgi->hg_class, 1, (void**)(&buffer), &size, 
+            HG_BULK_READ_ONLY, &bulk_handle);
+        if(hret != HG_SUCCESS)
+        {
+            out.ret = -1;
+            HG_Free_input(handle, &in);
+            HG_Respond(handle, NULL, NULL, &out);
+            HG_Destroy(handle);
+            return;
+        }
     }
 
     hret = margo_bulk_transfer(mid, HG_BULK_PUSH, hgi->addr, in.bulk_handle,
-        0, bulk_handle, 0, size);
+        in.bulk_offset, bulk_handle, 0, size);
     if(hret != HG_SUCCESS)
     {
         out.ret = -1;
@@ -378,9 +425,13 @@ static void bake_bulk_read_ult(hg_handle_t handle)
         return;
     }
 
+    if (get_pool_success)
+        release_pool_bulk(size, bulk_handle, HG_BULK_READ_ONLY);
+    else
+        HG_Bulk_free(bulk_handle);
+
     out.ret = 0;
 
-    HG_Bulk_free(bulk_handle);
     HG_Free_input(handle, &in);
     HG_Respond(handle, NULL, NULL, &out);
     HG_Destroy(handle);
@@ -397,9 +448,7 @@ static void bake_bulk_eager_read_ult(hg_handle_t handle)
     bake_bulk_eager_read_in_t in;
     hg_return_t hret;
     char* buffer;
-    hg_size_t size;
     struct hg_info *hgi;
-    margo_instance_id mid;
     pmemobj_region_id_t* prid;
 
     // printf("Got RPC request to read bulk region.\n");
@@ -408,7 +457,6 @@ static void bake_bulk_eager_read_ult(hg_handle_t handle)
 
     hgi = HG_Get_info(handle);
     assert(hgi);
-    mid = margo_hg_class_to_instance(hgi->hg_class);
 
     hret = HG_Get_input(handle, &in);
     if(hret != HG_SUCCESS)

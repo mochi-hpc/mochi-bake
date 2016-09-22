@@ -9,7 +9,9 @@
 
 #include <uuid.h>
 #include <stdint.h>
- 
+#include <mercury_types.h>
+#include <hg-bulk-pool.h>
+
 /**
  * Persistent, universal, opaque identifier for a BAKE target.
  * Remains constant if instance is opened, closed, or migrated.
@@ -38,7 +40,39 @@ typedef struct {
 int bake_probe_instance(
     const char *mercury_dest,
     bake_target_id_t *bti);
-  
+
+/**
+ * Get the Mercury class used by BAKE. Requires first calling
+ * bake_probe_instance.
+ */
+hg_class_t* bake_get_class(void);
+
+/**
+ * Initialize a set of hg_bulk_t buffer pools to use with the given target.
+ * Currently this data structure is process-global.
+ *
+ * @param [in] hgcl Mercury class to bind pools to
+ * @param [in] npools Number of pool size classes
+ * @param [in] nbufs  Number of bulk buffers per pool
+ * @param [in] init_size Size of smallest pool
+ * @param [in] size_multiple Size increment multiple between size classes
+ * @param [in] thread_opt concurrency method used by pools
+ *
+ * @returns HG_SUCCESS on success
+ */
+hg_return_t bake_create_buffer_pool_set(
+        hg_class_t *hgcl,
+        hg_size_t npools,
+        hg_size_t nbufs,
+        hg_size_t init_size,
+        hg_size_t size_multiple,
+        hg_bulk_pool_thread_opt_t thread_opt);
+
+/**
+ * Destroy the set of buffer pools.
+ */
+void bake_destroy_buffer_pool_set(void);
+
 /**
  * Create a bounded-size bulk data region.  The resulting region can be
  * written using bulk write operations, and can be persisted (once writes are

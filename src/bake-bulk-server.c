@@ -12,6 +12,7 @@
 #include <abt-snoozer.h>
 #include <margo.h>
 #include <libpmemobj.h>
+#include <hg-bulk-pool.h>
 
 #include "bake-bulk-rpc.h"
 
@@ -35,11 +36,21 @@ int main(int argc, char **argv)
     hg_class_t *hg_class;
     char target_string[64];
     PMEMoid root_oid;
+    hg_return_t hret;
+    hg_size_t npools;
+    hg_size_t count;
+    hg_size_t size;
+    hg_size_t multiple;
+    hg_bulk_pool_thread_opt_t topt;
 
-    if(argc != 3)
+    if(argc < 3 || (argc > 3 && argc != 8))
     {
-        fprintf(stderr, "Usage: bake-bulk-server <HG listening addr> <pmem pool>\n");
-        fprintf(stderr, "  Example: ./bake-bulk-server tcp://localhost:1234 /dev/shm/foo.dat\n");
+        fprintf(stderr, "Usage: bake-bulk-server "
+                "<HG listening addr> <pmem pool> "
+                "[<npools> <buffers per pool> <initial size> <size multiple> <concurrency mode>]\n"
+                "  <concurrency mode> - one of HG, ABT, or NONE\n"
+                "  NOTE: all latter options needed to enable bulk pool");
+        fprintf(stderr, "  Example: ./bake-bulk-server tcp://localhost:1234 /dev/shm/foo.dat 4 4 4096 4 ABT\n");
         return(-1);
     }
 
@@ -109,6 +120,29 @@ int main(int argc, char **argv)
         return(-1);
     }
 
+    /* set up bulk pool if asked for */
+    /* TODO: sanity check the numbers */
+    /*********************************/
+    if (argc > 3) {
+        npools   = atoi(argv[3]);
+        count    = atoi(argv[4]);
+        size     = atoi(argv[5]);
+        multiple = atoi(argv[6]);
+        if      (strcmp(argv[7], "HG")   == 0) topt = HG_BULK_POOL_THREAD_HG;
+        else if (strcmp(argv[7], "ABT")  == 0) topt = HG_BULK_POOL_THREAD_ABT;
+        else if (strcmp(argv[7], "NONE") == 0) topt = HG_BULK_POOL_THREAD_NONE;
+        else {
+            fprintf(stderr, "bad thread type argument %s\n", argv[7]);
+            return(-1);
+        }
+        hret = bake_create_buffer_pool_set(hg_class, npools, count, size,
+                multiple, topt);
+        if (hret != HG_SUCCESS) {
+            fprintf(stderr, "failed to create bulk buffer pool\n");
+            return(-1);
+        }
+    }
+
     /* actually start margo */
     /* provide argobots pools for driving communication progress and
      * executing rpc handlers as well as class and context for Mercury
@@ -164,6 +198,8 @@ int main(int argc, char **argv)
      * ABT pool.
      */
     margo_wait_for_finalize(mid);
+
+    if (argc > 3) bake_destroy_buffer_pool_set();
 
     ABT_finalize();
 

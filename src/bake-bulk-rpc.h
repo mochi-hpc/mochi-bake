@@ -30,6 +30,8 @@ MERCURY_GEN_PROC(bake_bulk_write_in_t,
     ((bake_target_id_t)(bti))\
     ((bake_bulk_region_id_t)(rid))\
     ((uint64_t)(region_offset))\
+    ((uint64_t)(region_size))\
+    ((uint64_t)(bulk_offset))\
     ((hg_bulk_t)(bulk_handle)))
 MERCURY_GEN_PROC(bake_bulk_write_out_t,
     ((int32_t)(ret)))
@@ -72,6 +74,8 @@ MERCURY_GEN_PROC(bake_bulk_read_in_t,
     ((bake_target_id_t)(bti))\
     ((bake_bulk_region_id_t)(rid))\
     ((uint64_t)(region_offset))\
+    ((uint64_t)(region_size))\
+    ((uint64_t)(bulk_offset))\
     ((hg_bulk_t)(bulk_handle)))
 MERCURY_GEN_PROC(bake_bulk_read_out_t,
     ((int32_t)(ret)))

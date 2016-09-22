@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -31,10 +32,16 @@ int main(int argc, char **argv)
     int ret;
     bake_target_id_t bti;
     int min_size, max_size, iterations, cur_size;
+    hg_return_t hret;
+    hg_size_t npools;
+    hg_size_t count;
+    hg_size_t size;
+    hg_size_t multiple;
+    hg_bulk_pool_thread_opt_t topt;
  
-    if(argc != 5)
+    if(argc != 5 && argc != 10)
     {
-        fprintf(stderr, "Usage: bb-latency-bench <server addr> <iterations> <min_sz> <max_sz>\n");
+        fprintf(stderr, "Usage: bb-latency-bench <server addr> <iterations> <min_sz> <max_sz> [<npools> <buffers per pool> <initial size> <size multiple> <concurrency mode>\n");
         fprintf(stderr, "  Example: ./bb-latency-bench tcp://localhost:1234 1000 4 32\n");
         return(-1);
     }       
@@ -72,6 +79,29 @@ int main(int argc, char **argv)
         ABT_finalize();
         fprintf(stderr, "Error: bake_probe_instance()\n");
         return(-1);
+    }
+
+    /* set up bulk pool if asked for */
+    /* TODO: sanity check the numbers */
+    /*********************************/
+    if (argc > 5) {
+        npools   = atoi(argv[5]);
+        count    = atoi(argv[6]);
+        size     = atoi(argv[7]);
+        multiple = atoi(argv[8]);
+        if      (strcmp(argv[9], "HG")   == 0) topt = HG_BULK_POOL_THREAD_HG;
+        else if (strcmp(argv[9], "ABT")  == 0) topt = HG_BULK_POOL_THREAD_ABT;
+        else if (strcmp(argv[9], "NONE") == 0) topt = HG_BULK_POOL_THREAD_NONE;
+        else {
+            fprintf(stderr, "bad thread type argument %s\n", argv[9]);
+            return(-1);
+        }
+        hret = bake_create_buffer_pool_set(bake_get_class(), npools, count,
+                size, multiple, topt);
+        if (hret != HG_SUCCESS) {
+            fprintf(stderr, "failed to create bulk buffer pool\n");
+            return(-1);
+        }
     }
 
     printf("# <op> <iterations> <size> <min> <q1> <med> <avg> <q3> <max>\n");

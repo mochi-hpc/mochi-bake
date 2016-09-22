@@ -1,5 +1,7 @@
 src_libbake_bulk_la_SOURCES += \
- src/bake-bulk.c 
+ src/bake-bulk.c \
+ src/bake-pool.c \
+ src/bake-pool.h
 
 bin_PROGRAMS += \
  src/bake-bulk-server \

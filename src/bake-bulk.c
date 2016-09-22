@@ -7,8 +7,10 @@
 #include <assert.h>
 #include <bake-bulk.h>
 #include <margo.h>
+#include <hg-bulk-pool.h>
 #include "uthash.h"
 #include "bake-bulk-rpc.h"
+#include "bake-pool.h"
 
 /* Refers to a single Mercury/Margo initialization, for now this is shared by
  * all remote targets.  In the future we probably need to support multiple in
@@ -262,7 +264,12 @@ int bake_probe_instance(
 
     return(ret);
 }
-  
+
+hg_class_t* bake_get_class(void)
+{
+    return g_hginst.hg_class;
+}
+
 void bake_release_instance(
     bake_target_id_t bti)
 {
@@ -368,6 +375,10 @@ int bake_bulk_write(
     int ret;
     struct bake_instance *instance = NULL;
     struct bake_handle_cache_el *el = NULL;
+    void *pool_bulk_buf = NULL;
+    hg_size_t pool_bulk_size;
+    hg_uint32_t pool_bulk_segments_found;
+    int get_pool_success;
 
     if(buf_size <= BAKE_BULK_EAGER_LIMIT)
     {
@@ -381,21 +392,45 @@ int bake_bulk_write(
     in.bti = bti;
     in.rid = rid;
     in.region_offset = region_offset;
+    in.region_size = buf_size;
+    in.bulk_offset = 0;
+    in.bulk_handle = HG_BULK_NULL;
 
-    hret = HG_Bulk_create(g_hginst.hg_class, 1, (void**)(&buf), &buf_size, 
-        HG_BULK_READ_ONLY, &in.bulk_handle);
-    if(hret != HG_SUCCESS)
-    {
-        return(-1);
+    if (is_pool_enabled()) {
+        in.bulk_handle = get_pool_bulk(buf_size, HG_BULK_READ_ONLY);
+        if (in.bulk_handle != HG_BULK_NULL) {
+            pool_bulk_segments_found = 0;
+            hret = HG_Bulk_access(in.bulk_handle, 0, buf_size, HG_BULK_READ_ONLY,
+                    1, &pool_bulk_buf, &pool_bulk_size,
+                    &pool_bulk_segments_found);
+            assert(hret == HG_SUCCESS &&
+                    buf_size <= pool_bulk_size &&
+                    pool_bulk_segments_found == 1);
+            /* copy into the pooled buffer */
+            memcpy(pool_bulk_buf, buf, buf_size);
+        }
     }
-   
+    get_pool_success = (in.bulk_handle != HG_BULK_NULL);
+
+    if (!get_pool_success) {
+        hret = HG_Bulk_create(g_hginst.hg_class, 1, (void**)(&buf), &buf_size, 
+            HG_BULK_READ_ONLY, &in.bulk_handle);
+        if(hret != HG_SUCCESS)
+        {
+            return(-1);
+        }
+    }
+
     el = get_handle(instance, g_hginst.bake_bulk_write_id);
     assert(el);
 
     hret = margo_forward(g_hginst.mid, el->handle, &in);
     if(hret != HG_SUCCESS)
     {
-        HG_Bulk_free(in.bulk_handle);
+        if (get_pool_success)
+            release_pool_bulk(buf_size, in.bulk_handle, HG_BULK_READ_ONLY);
+        else
+            HG_Bulk_free(in.bulk_handle);
         put_handle(instance, el);
         return(-1);
     }
@@ -403,15 +438,21 @@ int bake_bulk_write(
     hret = HG_Get_output(el->handle, &out);
     if(hret != HG_SUCCESS)
     {
-        HG_Bulk_free(in.bulk_handle);
+        if (get_pool_success)
+            release_pool_bulk(buf_size, in.bulk_handle, HG_BULK_READ_ONLY);
+        else
+            HG_Bulk_free(in.bulk_handle);
         put_handle(instance, el);
         return(-1);
     }
-    
+
     ret = out.ret;
 
     HG_Free_output(el->handle, &out);
-    HG_Bulk_free(in.bulk_handle);
+    if (get_pool_success)
+        release_pool_bulk(buf_size, in.bulk_handle, HG_BULK_READ_ONLY);
+    else
+        HG_Bulk_free(in.bulk_handle);
     put_handle(instance, el);
     return(ret);
 }
@@ -585,6 +626,10 @@ int bake_bulk_read(
     int ret;
     struct bake_instance *instance = NULL;
     struct bake_handle_cache_el *el = NULL;
+    void *pool_bulk_buf = NULL;
+    hg_size_t pool_bulk_size;
+    hg_uint32_t pool_bulk_segments_found;
+    int get_pool_success;
 
     if(buf_size <= BAKE_BULK_EAGER_LIMIT)
     {
@@ -598,12 +643,31 @@ int bake_bulk_read(
     in.bti = bti;
     in.rid = rid;
     in.region_offset = region_offset;
+    in.region_size = buf_size;
+    in.bulk_offset = 0;
+    in.bulk_handle = HG_BULK_NULL;
 
-    hret = HG_Bulk_create(g_hginst.hg_class, 1, (void**)(&buf), &buf_size, 
-        HG_BULK_WRITE_ONLY, &in.bulk_handle);
-    if(hret != HG_SUCCESS)
-    {
-        return(-1);
+    if (is_pool_enabled()) {
+        in.bulk_handle = get_pool_bulk(buf_size, HG_BULK_WRITE_ONLY);
+        if (in.bulk_handle != HG_BULK_NULL) {
+            pool_bulk_segments_found = 0;
+            hret = HG_Bulk_access(in.bulk_handle, 0, buf_size, HG_BULK_WRITE_ONLY,
+                    1, &pool_bulk_buf, &pool_bulk_size,
+                    &pool_bulk_segments_found);
+            assert(hret == HG_SUCCESS &&
+                    buf_size <= pool_bulk_size &&
+                    pool_bulk_segments_found == 1);
+        }
+    }
+    get_pool_success = (in.bulk_handle != HG_BULK_NULL);
+
+    if (!get_pool_success) {
+        hret = HG_Bulk_create(g_hginst.hg_class, 1, (void**)(&buf), &buf_size, 
+            HG_BULK_WRITE_ONLY, &in.bulk_handle);
+        if(hret != HG_SUCCESS)
+        {
+            return(-1);
+        }
     }
    
     el = get_handle(instance, g_hginst.bake_bulk_read_id);
@@ -612,7 +676,10 @@ int bake_bulk_read(
     hret = margo_forward(g_hginst.mid, el->handle, &in);
     if(hret != HG_SUCCESS)
     {
-        HG_Bulk_free(in.bulk_handle);
+        if (get_pool_success)
+            release_pool_bulk(buf_size, in.bulk_handle, HG_BULK_WRITE_ONLY);
+        else
+            HG_Bulk_free(in.bulk_handle);
         put_handle(instance, el);
         return(-1);
     }
@@ -620,15 +687,22 @@ int bake_bulk_read(
     hret = HG_Get_output(el->handle, &out);
     if(hret != HG_SUCCESS)
     {
-        HG_Bulk_free(in.bulk_handle);
+        if (get_pool_success)
+            release_pool_bulk(buf_size, in.bulk_handle, HG_BULK_WRITE_ONLY);
+        else
+            HG_Bulk_free(in.bulk_handle);
         put_handle(instance, el);
         return(-1);
     }
     
     ret = out.ret;
+    if (ret == 0) memcpy(buf, pool_bulk_buf, buf_size);
 
     HG_Free_output(el->handle, &out);
-    HG_Bulk_free(in.bulk_handle);
+    if (get_pool_success)
+        release_pool_bulk(buf_size, in.bulk_handle, HG_BULK_WRITE_ONLY);
+    else
+        HG_Bulk_free(in.bulk_handle);
     put_handle(instance, el);
     return(ret);
 }
