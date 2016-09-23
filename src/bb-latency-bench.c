@@ -261,26 +261,38 @@ static void bench_routine_print(const char* op, int size, int iterations, double
     }
     avg = sum/(double)iterations;
 
-    bracket1 = iterations/2;
-    if(iterations%2)
-        bracket2 = bracket1 + 1;
-    else
-        bracket2 = bracket1;
-    med = (measurement_array[bracket1] + measurement_array[bracket2])/(double)2;
+    /* HACK: quartile logic breaks down for small iteration count, so just
+     * disable for small counts */
+    if (iterations < 5) {
+        med = 0.0;
+        q1 = 0.0;
+        q3 = 0.0;
+    }
+    else {
+        bracket1 = iterations/2;
+        if(iterations%2)
+            bracket2 = bracket1 + 1;
+        else
+            bracket2 = bracket1;
+        med = (measurement_array[bracket1] +
+                measurement_array[bracket2])/(double)2;
 
-    bracket1 = iterations/4;
-    if(iterations%4)
-        bracket2 = bracket1 + 1;
-    else
-        bracket2 = bracket1;
-    q1 = (measurement_array[bracket1] + measurement_array[bracket2])/(double)2;
+        bracket1 = iterations/4;
+        if(iterations%4)
+            bracket2 = bracket1 + 1;
+        else
+            bracket2 = bracket1;
+        q1 = (measurement_array[bracket1] +
+                measurement_array[bracket2])/(double)2;
 
-    bracket1 *= 3;
-    if(iterations%4)
-        bracket2 = bracket1 + 1;
-    else
-        bracket2 = bracket1;
-    q3 = (measurement_array[bracket1] + measurement_array[bracket2])/(double)2;
+        bracket1 *= 3;
+        if(iterations%4)
+            bracket2 = bracket1 + 1;
+        else
+            bracket2 = bracket1;
+        q3 = (measurement_array[bracket1] +
+                measurement_array[bracket2])/(double)2;
+    }
 
     printf("%s\t%d\t%d\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f", op, iterations, size, min, q1, med, avg, q3, max);
     for(i=0; i<iterations; i++)
