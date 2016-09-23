@@ -282,7 +282,13 @@ static void bench_routine_print(const char* op, int size, int iterations, double
         bracket2 = bracket1;
     q3 = (measurement_array[bracket1] + measurement_array[bracket2])/(double)2;
 
-    printf("%s\t%d\t%d\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\n", op, iterations, size, min, q1, med, avg, q3, max);
+    printf("%s\t%d\t%d\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f", op, iterations, size, min, q1, med, avg, q3, max);
+    for(i=0; i<iterations; i++)
+    {
+        printf("\t%.9f", measurement_array[i]);
+    }
+    printf("\n");
+    fflush(NULL);
 
     return;
 }
