@@ -696,7 +696,7 @@ int bake_bulk_read(
     }
     
     ret = out.ret;
-    if (ret == 0) memcpy(buf, pool_bulk_buf, buf_size);
+    if (ret == 0 && get_pool_success) memcpy(buf, pool_bulk_buf, buf_size);
 
     HG_Free_output(el->handle, &out);
     if (get_pool_success)

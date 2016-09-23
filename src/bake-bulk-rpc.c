@@ -166,7 +166,11 @@ static void bake_bulk_write_ult(hg_handle_t handle)
     if(hret != HG_SUCCESS)
     {
         out.ret = -1;
-        HG_Bulk_free(bulk_handle);
+        if (get_pool_success)
+            release_pool_bulk(size, bulk_handle, HG_BULK_WRITE_ONLY);
+        else
+            HG_Bulk_free(bulk_handle);
+
         HG_Free_input(handle, &in);
         HG_Respond(handle, NULL, NULL, &out);
         HG_Destroy(handle);
@@ -342,7 +346,7 @@ static void bake_bulk_read_ult(hg_handle_t handle)
     hg_return_t hret;
     char* buffer;
     hg_size_t size;
-    hg_bulk_t bulk_handle;
+    hg_bulk_t bulk_handle = HG_BULK_NULL;
     void *pool_bulk_buf = NULL;
     hg_size_t pool_bulk_size;
     hg_uint32_t pool_bulk_segments_found;
@@ -418,7 +422,10 @@ static void bake_bulk_read_ult(hg_handle_t handle)
     if(hret != HG_SUCCESS)
     {
         out.ret = -1;
-        HG_Bulk_free(bulk_handle);
+        if (get_pool_success)
+            release_pool_bulk(size, bulk_handle, HG_BULK_READ_ONLY);
+        else
+            HG_Bulk_free(bulk_handle);
         HG_Free_input(handle, &in);
         HG_Respond(handle, NULL, NULL, &out);
         HG_Destroy(handle);
