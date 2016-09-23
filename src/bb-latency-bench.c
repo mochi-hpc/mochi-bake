@@ -118,6 +118,8 @@ int main(int argc, char **argv)
     
     bake_release_instance(bti);
 
+    bake_destroy_buffer_pool_set();
+
     ABT_finalize();
 
     free(measurement_array);
