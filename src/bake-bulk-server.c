@@ -42,6 +42,7 @@ int main(int argc, char **argv)
     hg_size_t size;
     hg_size_t multiple;
     hg_bulk_pool_thread_opt_t topt;
+    hg_bulk_pool_set_t *poolset_read, *poolset_write;
 
     if(argc < 3 || (argc > 3 && argc != 8))
     {
@@ -135,12 +136,20 @@ int main(int argc, char **argv)
             fprintf(stderr, "bad thread type argument %s\n", argv[7]);
             return(-1);
         }
-        hret = bake_create_buffer_pool_set(hg_class, npools, count, size,
-                multiple, topt);
+        hret = hg_bulk_pool_set_create(hg_class, npools, count, size, multiple,
+                HG_BULK_READ_ONLY, topt, &poolset_read);
         if (hret != HG_SUCCESS) {
             fprintf(stderr, "failed to create bulk buffer pool\n");
             return(-1);
         }
+        hret = hg_bulk_pool_set_create(hg_class, npools, count, size, multiple,
+                HG_BULK_WRITE_ONLY, topt, &poolset_write);
+        if (hret != HG_SUCCESS) {
+            fprintf(stderr, "failed to create bulk buffer pool\n");
+            return(-1);
+        }
+        bake_set_buffer_pool_set(poolset_read);
+        bake_set_buffer_pool_set(poolset_write);
     }
 
     /* actually start margo */
@@ -199,7 +208,10 @@ int main(int argc, char **argv)
      */
     margo_wait_for_finalize(mid);
 
-    if (argc > 3) bake_destroy_buffer_pool_set();
+    if (argc > 3) {
+        hg_bulk_pool_set_destroy(poolset_read);
+        hg_bulk_pool_set_destroy(poolset_write);
+    }
 
     ABT_finalize();
 

@@ -373,6 +373,7 @@ int bake_bulk_write(
     bake_bulk_write_in_t in;
     bake_bulk_write_out_t out;
     int ret;
+    hg_bulk_pool_set_t *ps = NULL;
     struct bake_instance *instance = NULL;
     struct bake_handle_cache_el *el = NULL;
     void *pool_bulk_buf = NULL;
@@ -396,24 +397,23 @@ int bake_bulk_write(
     in.bulk_offset = 0;
     in.bulk_handle = HG_BULK_NULL;
 
-    if (is_pool_enabled()) {
-        in.bulk_handle = get_pool_bulk(buf_size, HG_BULK_READ_ONLY);
-        if (in.bulk_handle != HG_BULK_NULL) {
-            pool_bulk_segments_found = 0;
-            hret = HG_Bulk_access(in.bulk_handle, 0, buf_size, HG_BULK_READ_ONLY,
-                    1, &pool_bulk_buf, &pool_bulk_size,
-                    &pool_bulk_segments_found);
-            assert(hret == HG_SUCCESS &&
-                    buf_size <= pool_bulk_size &&
-                    pool_bulk_segments_found == 1);
-            /* copy into the pooled buffer */
-            memcpy(pool_bulk_buf, buf, buf_size);
-        }
+    ps = (poolset_rd == NULL) ? poolset_rw : poolset_rd;
+    if (ps != NULL) in.bulk_handle = hg_bulk_pool_set_get(ps, buf_size);
+    if (in.bulk_handle != HG_BULK_NULL) {
+        pool_bulk_segments_found = 0;
+        hret = HG_Bulk_access(in.bulk_handle, 0, buf_size, HG_BULK_READ_ONLY,
+                1, &pool_bulk_buf, &pool_bulk_size,
+                &pool_bulk_segments_found);
+        assert(hret == HG_SUCCESS &&
+                buf_size <= pool_bulk_size &&
+                pool_bulk_segments_found == 1);
+        /* copy into the pooled buffer */
+        memcpy(pool_bulk_buf, buf, buf_size);
     }
     get_pool_success = (in.bulk_handle != HG_BULK_NULL);
 
     if (!get_pool_success) {
-        hret = HG_Bulk_create(g_hginst.hg_class, 1, (void**)(&buf), &buf_size, 
+        hret = HG_Bulk_create(g_hginst.hg_class, 1, (void**)(&buf), &buf_size,
             HG_BULK_READ_ONLY, &in.bulk_handle);
         if(hret != HG_SUCCESS)
         {
@@ -428,7 +428,7 @@ int bake_bulk_write(
     if(hret != HG_SUCCESS)
     {
         if (get_pool_success)
-            release_pool_bulk(buf_size, in.bulk_handle, HG_BULK_READ_ONLY);
+            hg_bulk_pool_set_release(ps, in.bulk_handle);
         else
             HG_Bulk_free(in.bulk_handle);
         put_handle(instance, el);
@@ -439,7 +439,7 @@ int bake_bulk_write(
     if(hret != HG_SUCCESS)
     {
         if (get_pool_success)
-            release_pool_bulk(buf_size, in.bulk_handle, HG_BULK_READ_ONLY);
+            hg_bulk_pool_set_release(ps, in.bulk_handle);
         else
             HG_Bulk_free(in.bulk_handle);
         put_handle(instance, el);
@@ -450,7 +450,7 @@ int bake_bulk_write(
 
     HG_Free_output(el->handle, &out);
     if (get_pool_success)
-        release_pool_bulk(buf_size, in.bulk_handle, HG_BULK_READ_ONLY);
+        hg_bulk_pool_set_release(ps, in.bulk_handle);
     else
         HG_Bulk_free(in.bulk_handle);
     put_handle(instance, el);
@@ -624,6 +624,7 @@ int bake_bulk_read(
     bake_bulk_read_in_t in;
     bake_bulk_read_out_t out;
     int ret;
+    hg_bulk_pool_set_t *ps = NULL;
     struct bake_instance *instance = NULL;
     struct bake_handle_cache_el *el = NULL;
     void *pool_bulk_buf = NULL;
@@ -647,22 +648,21 @@ int bake_bulk_read(
     in.bulk_offset = 0;
     in.bulk_handle = HG_BULK_NULL;
 
-    if (is_pool_enabled()) {
-        in.bulk_handle = get_pool_bulk(buf_size, HG_BULK_WRITE_ONLY);
-        if (in.bulk_handle != HG_BULK_NULL) {
-            pool_bulk_segments_found = 0;
-            hret = HG_Bulk_access(in.bulk_handle, 0, buf_size, HG_BULK_WRITE_ONLY,
-                    1, &pool_bulk_buf, &pool_bulk_size,
-                    &pool_bulk_segments_found);
-            assert(hret == HG_SUCCESS &&
-                    buf_size <= pool_bulk_size &&
-                    pool_bulk_segments_found == 1);
-        }
+    ps = (poolset_wr == NULL) ? poolset_rw : poolset_wr;
+    if (ps != NULL) in.bulk_handle = hg_bulk_pool_set_get(ps, buf_size);
+    if (in.bulk_handle != HG_BULK_NULL) {
+        pool_bulk_segments_found = 0;
+        hret = HG_Bulk_access(in.bulk_handle, 0, buf_size, HG_BULK_WRITE_ONLY,
+                1, &pool_bulk_buf, &pool_bulk_size,
+                &pool_bulk_segments_found);
+        assert(hret == HG_SUCCESS &&
+                buf_size <= pool_bulk_size &&
+                pool_bulk_segments_found == 1);
     }
     get_pool_success = (in.bulk_handle != HG_BULK_NULL);
 
     if (!get_pool_success) {
-        hret = HG_Bulk_create(g_hginst.hg_class, 1, (void**)(&buf), &buf_size, 
+        hret = HG_Bulk_create(g_hginst.hg_class, 1, (void**)(&buf), &buf_size,
             HG_BULK_WRITE_ONLY, &in.bulk_handle);
         if(hret != HG_SUCCESS)
         {
@@ -677,7 +677,7 @@ int bake_bulk_read(
     if(hret != HG_SUCCESS)
     {
         if (get_pool_success)
-            release_pool_bulk(buf_size, in.bulk_handle, HG_BULK_WRITE_ONLY);
+            hg_bulk_pool_set_release(ps, in.bulk_handle);
         else
             HG_Bulk_free(in.bulk_handle);
         put_handle(instance, el);
@@ -688,7 +688,7 @@ int bake_bulk_read(
     if(hret != HG_SUCCESS)
     {
         if (get_pool_success)
-            release_pool_bulk(buf_size, in.bulk_handle, HG_BULK_WRITE_ONLY);
+            hg_bulk_pool_set_release(ps, in.bulk_handle);
         else
             HG_Bulk_free(in.bulk_handle);
         put_handle(instance, el);
@@ -700,7 +700,7 @@ int bake_bulk_read(
 
     HG_Free_output(el->handle, &out);
     if (get_pool_success)
-        release_pool_bulk(buf_size, in.bulk_handle, HG_BULK_WRITE_ONLY);
+        hg_bulk_pool_set_release(ps, in.bulk_handle);
     else
         HG_Bulk_free(in.bulk_handle);
     put_handle(instance, el);

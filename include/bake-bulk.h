@@ -48,30 +48,16 @@ int bake_probe_instance(
 hg_class_t* bake_get_class(void);
 
 /**
- * Initialize a set of hg_bulk_t buffer pools to use with the given target.
- * Currently this data structure is process-global.
+ * Enable buffer pooling using the given buffer pool. This call is not
+ * thread-safe - call it before sending or accepting BAKE RPCs.
  *
- * @param [in] hgcl Mercury class to bind pools to
- * @param [in] npools Number of pool size classes
- * @param [in] nbufs  Number of bulk buffers per pool
- * @param [in] init_size Size of smallest pool
- * @param [in] size_multiple Size increment multiple between size classes
- * @param [in] thread_opt concurrency method used by pools
- *
- * @returns HG_SUCCESS on success
+ * The permissions of the pool set determine when the set is used -
+ * HG_BULK_READ_ONLY will be used by server reads and client writes, while
+ * HG_BULK_WRITE_ONLY will be used by server writes and client reads. Both can
+ * be set concurrently. Alternatively, HG_BULK_READWRITE will use a single pool
+ * for all operations.
  */
-hg_return_t bake_create_buffer_pool_set(
-        hg_class_t *hgcl,
-        hg_size_t npools,
-        hg_size_t nbufs,
-        hg_size_t init_size,
-        hg_size_t size_multiple,
-        hg_bulk_pool_thread_opt_t thread_opt);
-
-/**
- * Destroy the set of buffer pools.
- */
-void bake_destroy_buffer_pool_set(void);
+void bake_set_buffer_pool_set(hg_bulk_pool_set_t *poolset);
 
 /**
  * Create a bounded-size bulk data region.  The resulting region can be

@@ -10,22 +10,10 @@
 #include <mercury_types.h>
 #include <hg-bulk-pool.h>
 
-/* Internal interface used for buffer pool management */
+/* buffer pool globals */
 
-struct bake_bulk_pool_set
-{
-    hg_bulk_pool_t **pools;
-    hg_size_t npools;
-    hg_size_t nbufs;
-    hg_size_t init_size;
-    hg_size_t size_multiple;
-};
-typedef struct bake_bulk_pool_set bake_bulk_pool_set_t;
-
-hg_bulk_t get_pool_bulk(hg_size_t s, hg_uint8_t flag);
-
-void release_pool_bulk(hg_size_t s, hg_bulk_t bulk, hg_uint8_t flag);
-
-int is_pool_enabled(void);
+extern hg_bulk_pool_set_t *poolset_rd;
+extern hg_bulk_pool_set_t *poolset_wr;
+extern hg_bulk_pool_set_t *poolset_rw;
 
 #endif

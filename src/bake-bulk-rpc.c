@@ -93,6 +93,7 @@ static void bake_bulk_write_ult(hg_handle_t handle)
     char* buffer;
     hg_size_t size;
     hg_bulk_t bulk_handle = HG_BULK_NULL;
+    hg_bulk_pool_set_t *ps = NULL;
     void *pool_bulk_buf = NULL;
     hg_size_t pool_bulk_size;
     hg_uint32_t pool_bulk_segments_found;
@@ -134,16 +135,15 @@ static void bake_bulk_write_ult(hg_handle_t handle)
     size = in.region_size;
 
     /* make the "to pool or not to pool" decision */
-    if (is_pool_enabled()) {
-        bulk_handle = get_pool_bulk(size, HG_BULK_WRITE_ONLY);
-        if (bulk_handle != HG_BULK_NULL) {
-            pool_bulk_segments_found = 0;
-            hret = HG_Bulk_access(bulk_handle, 0, size, HG_BULK_WRITE_ONLY, 1,
-                    &pool_bulk_buf, &pool_bulk_size, &pool_bulk_segments_found);
-            assert(hret == HG_SUCCESS &&
-                    size <= pool_bulk_size &&
-                    pool_bulk_segments_found == 1);
-        }
+    ps = (poolset_wr == NULL) ? poolset_rw : poolset_wr;
+    if (ps != NULL) bulk_handle = hg_bulk_pool_set_get(ps, size);
+    if (bulk_handle != HG_BULK_NULL) {
+        pool_bulk_segments_found = 0;
+        hret = HG_Bulk_access(bulk_handle, 0, size, HG_BULK_WRITE_ONLY, 1,
+                &pool_bulk_buf, &pool_bulk_size, &pool_bulk_segments_found);
+        assert(hret == HG_SUCCESS &&
+                size <= pool_bulk_size &&
+                pool_bulk_segments_found == 1);
     }
     get_pool_success = (bulk_handle != HG_BULK_NULL);
 
@@ -167,7 +167,7 @@ static void bake_bulk_write_ult(hg_handle_t handle)
     {
         out.ret = -1;
         if (get_pool_success)
-            release_pool_bulk(size, bulk_handle, HG_BULK_WRITE_ONLY);
+            hg_bulk_pool_set_release(ps, bulk_handle);
         else
             HG_Bulk_free(bulk_handle);
 
@@ -180,7 +180,7 @@ static void bake_bulk_write_ult(hg_handle_t handle)
     /* if using the pool, then also need to memcpy out */
     if (get_pool_success) {
         memcpy(buffer, pool_bulk_buf, size);
-        release_pool_bulk(size, bulk_handle, HG_BULK_WRITE_ONLY);
+        hg_bulk_pool_set_release(ps, bulk_handle);
     }
     else
         HG_Bulk_free(bulk_handle);
@@ -347,6 +347,7 @@ static void bake_bulk_read_ult(hg_handle_t handle)
     char* buffer;
     hg_size_t size;
     hg_bulk_t bulk_handle = HG_BULK_NULL;
+    hg_bulk_pool_set_t *ps = NULL;
     void *pool_bulk_buf = NULL;
     hg_size_t pool_bulk_size;
     hg_uint32_t pool_bulk_segments_found;
@@ -388,18 +389,17 @@ static void bake_bulk_read_ult(hg_handle_t handle)
     size = in.region_size;
 
     /* make the "to pool or not to pool" decision */
-    if (is_pool_enabled()) {
-        bulk_handle = get_pool_bulk(size, HG_BULK_READ_ONLY);
-        if (bulk_handle != HG_BULK_NULL) {
-            pool_bulk_segments_found = 0;
-            hret = HG_Bulk_access(bulk_handle, 0, size, HG_BULK_READ_ONLY, 1,
-                    &pool_bulk_buf, &pool_bulk_size, &pool_bulk_segments_found);
-            assert(hret == HG_SUCCESS &&
-                    size <= pool_bulk_size &&
-                    pool_bulk_segments_found == 1);
-            /* also need to memcpy in the data */
-            memcpy(pool_bulk_buf, buffer, size);
-        }
+    ps = (poolset_rd == NULL) ? poolset_rw : poolset_rd;
+    if (ps != NULL) bulk_handle = hg_bulk_pool_set_get(ps, size);
+    if (bulk_handle != HG_BULK_NULL) {
+        pool_bulk_segments_found = 0;
+        hret = HG_Bulk_access(bulk_handle, 0, size, HG_BULK_READ_ONLY, 1,
+                &pool_bulk_buf, &pool_bulk_size, &pool_bulk_segments_found);
+        assert(hret == HG_SUCCESS &&
+                size <= pool_bulk_size &&
+                pool_bulk_segments_found == 1);
+        /* also need to memcpy in the data */
+        memcpy(pool_bulk_buf, buffer, size);
     }
     get_pool_success = (bulk_handle != HG_BULK_NULL);
 
@@ -423,7 +423,7 @@ static void bake_bulk_read_ult(hg_handle_t handle)
     {
         out.ret = -1;
         if (get_pool_success)
-            release_pool_bulk(size, bulk_handle, HG_BULK_READ_ONLY);
+            hg_bulk_pool_set_release(ps, bulk_handle);
         else
             HG_Bulk_free(bulk_handle);
         HG_Free_input(handle, &in);
@@ -433,7 +433,7 @@ static void bake_bulk_read_ult(hg_handle_t handle)
     }
 
     if (get_pool_success)
-        release_pool_bulk(size, bulk_handle, HG_BULK_READ_ONLY);
+        hg_bulk_pool_set_release(ps, bulk_handle);
     else
         HG_Bulk_free(bulk_handle);
 
