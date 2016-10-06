@@ -61,6 +61,16 @@ struct hg_instance g_hginst = {
     .refct = 0,
 };
 
+void bake_init(hg_class_t *hg_class)
+{
+    init_noop_pools(hg_class);
+}
+
+void bake_finalize(void)
+{
+    fini_pools();
+}
+
 static int bake_bulk_eager_read(
     bake_target_id_t bti,
     bake_bulk_region_id_t rid,
@@ -374,12 +384,10 @@ int bake_bulk_write(
     bake_bulk_write_out_t out;
     int ret;
     hg_bulk_pool_set_t *ps = NULL;
+    hg_bulk_au_t au;
     struct bake_instance *instance = NULL;
     struct bake_handle_cache_el *el = NULL;
     void *pool_bulk_buf = NULL;
-    hg_size_t pool_bulk_size;
-    hg_uint32_t pool_bulk_segments_found;
-    int get_pool_success;
 
     if(buf_size <= BAKE_BULK_EAGER_LIMIT)
     {
@@ -395,31 +403,13 @@ int bake_bulk_write(
     in.region_offset = region_offset;
     in.region_size = buf_size;
     in.bulk_offset = 0;
-    in.bulk_handle = HG_BULK_NULL;
 
     ps = (poolset_rd == NULL) ? poolset_rw : poolset_rd;
-    if (ps != NULL) in.bulk_handle = hg_bulk_pool_set_get(ps, buf_size);
-    if (in.bulk_handle != HG_BULK_NULL) {
-        pool_bulk_segments_found = 0;
-        hret = HG_Bulk_access(in.bulk_handle, 0, buf_size, HG_BULK_READ_ONLY,
-                1, &pool_bulk_buf, &pool_bulk_size,
-                &pool_bulk_segments_found);
-        assert(hret == HG_SUCCESS &&
-                buf_size <= pool_bulk_size &&
-                pool_bulk_segments_found == 1);
-        /* copy into the pooled buffer */
-        memcpy(pool_bulk_buf, buf, buf_size);
-    }
-    get_pool_success = (in.bulk_handle != HG_BULK_NULL);
-
-    if (!get_pool_success) {
-        hret = HG_Bulk_create(g_hginst.hg_class, 1, (void**)(&buf), &buf_size,
-            HG_BULK_READ_ONLY, &in.bulk_handle);
-        if(hret != HG_SUCCESS)
-        {
-            return(-1);
-        }
-    }
+    assert(ps != NULL);
+    au = hg_bulk_pool_set_get_alloc(ps, buf_size, (void**)&buf);
+    assert(au.bulk != HG_BULK_NULL);
+    if (au.from_pool) memcpy(pool_bulk_buf, buf, buf_size);
+    in.bulk_handle = au.bulk;
 
     el = get_handle(instance, g_hginst.bake_bulk_write_id);
     assert(el);
@@ -427,10 +417,7 @@ int bake_bulk_write(
     hret = margo_forward(g_hginst.mid, el->handle, &in);
     if(hret != HG_SUCCESS)
     {
-        if (get_pool_success)
-            hg_bulk_pool_set_release(ps, in.bulk_handle);
-        else
-            HG_Bulk_free(in.bulk_handle);
+        hg_bulk_pool_set_release_au(ps, au);
         put_handle(instance, el);
         return(-1);
     }
@@ -438,10 +425,7 @@ int bake_bulk_write(
     hret = HG_Get_output(el->handle, &out);
     if(hret != HG_SUCCESS)
     {
-        if (get_pool_success)
-            hg_bulk_pool_set_release(ps, in.bulk_handle);
-        else
-            HG_Bulk_free(in.bulk_handle);
+        hg_bulk_pool_set_release_au(ps, au);
         put_handle(instance, el);
         return(-1);
     }
@@ -449,10 +433,7 @@ int bake_bulk_write(
     ret = out.ret;
 
     HG_Free_output(el->handle, &out);
-    if (get_pool_success)
-        hg_bulk_pool_set_release(ps, in.bulk_handle);
-    else
-        HG_Bulk_free(in.bulk_handle);
+    hg_bulk_pool_set_release_au(ps, au);
     put_handle(instance, el);
     return(ret);
 }
@@ -625,12 +606,11 @@ int bake_bulk_read(
     bake_bulk_read_out_t out;
     int ret;
     hg_bulk_pool_set_t *ps = NULL;
+    hg_bulk_au_t au;
     struct bake_instance *instance = NULL;
     struct bake_handle_cache_el *el = NULL;
     void *pool_bulk_buf = NULL;
     hg_size_t pool_bulk_size;
-    hg_uint32_t pool_bulk_segments_found;
-    int get_pool_success;
 
     if(buf_size <= BAKE_BULK_EAGER_LIMIT)
     {
@@ -649,37 +629,16 @@ int bake_bulk_read(
     in.bulk_handle = HG_BULK_NULL;
 
     ps = (poolset_wr == NULL) ? poolset_rw : poolset_wr;
-    if (ps != NULL) in.bulk_handle = hg_bulk_pool_set_get(ps, buf_size);
-    if (in.bulk_handle != HG_BULK_NULL) {
-        pool_bulk_segments_found = 0;
-        hret = HG_Bulk_access(in.bulk_handle, 0, buf_size, HG_BULK_WRITE_ONLY,
-                1, &pool_bulk_buf, &pool_bulk_size,
-                &pool_bulk_segments_found);
-        assert(hret == HG_SUCCESS &&
-                buf_size <= pool_bulk_size &&
-                pool_bulk_segments_found == 1);
-    }
-    get_pool_success = (in.bulk_handle != HG_BULK_NULL);
+    au = hg_bulk_pool_set_get_alloc(ps, buf_size, &buf);
+    assert(au.bulk != HG_BULK_NULL);
 
-    if (!get_pool_success) {
-        hret = HG_Bulk_create(g_hginst.hg_class, 1, (void**)(&buf), &buf_size,
-            HG_BULK_WRITE_ONLY, &in.bulk_handle);
-        if(hret != HG_SUCCESS)
-        {
-            return(-1);
-        }
-    }
-   
     el = get_handle(instance, g_hginst.bake_bulk_read_id);
     assert(el);
 
     hret = margo_forward(g_hginst.mid, el->handle, &in);
     if(hret != HG_SUCCESS)
     {
-        if (get_pool_success)
-            hg_bulk_pool_set_release(ps, in.bulk_handle);
-        else
-            HG_Bulk_free(in.bulk_handle);
+        hg_bulk_pool_set_release_au(ps, au);
         put_handle(instance, el);
         return(-1);
     }
@@ -687,22 +646,23 @@ int bake_bulk_read(
     hret = HG_Get_output(el->handle, &out);
     if(hret != HG_SUCCESS)
     {
-        if (get_pool_success)
-            hg_bulk_pool_set_release(ps, in.bulk_handle);
-        else
-            HG_Bulk_free(in.bulk_handle);
+        hg_bulk_pool_set_release_au(ps, au);
         put_handle(instance, el);
         return(-1);
     }
     
     ret = out.ret;
-    if (ret == 0 && get_pool_success) memcpy(buf, pool_bulk_buf, buf_size);
+    if (ret == 0 && au.from_pool) {
+        hg_uint32_t pool_bulk_segments_found = 0;
+        hret = HG_Bulk_access(au.bulk, 0, buf_size,
+                hg_bulk_pool_set_get_flag(ps), 1, &pool_bulk_buf,
+                &pool_bulk_size, &pool_bulk_segments_found);
+        assert(hret == HG_SUCCESS && pool_bulk_buf != NULL);
+        memcpy(buf, pool_bulk_buf, buf_size);
+    }
 
     HG_Free_output(el->handle, &out);
-    if (get_pool_success)
-        hg_bulk_pool_set_release(ps, in.bulk_handle);
-    else
-        HG_Bulk_free(in.bulk_handle);
+    hg_bulk_pool_set_release_au(ps, au);
     put_handle(instance, el);
     return(ret);
 }

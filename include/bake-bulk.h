@@ -30,6 +30,18 @@ typedef struct {
 } bake_bulk_region_id_t;
 
 /**
+ * TODO: just some placeholder calls to init/finalize some globals until we
+ * have a reasonable "local" representation. Could move some other global
+ * initialization here (HG_Init and such) but we can think about that later.
+ */
+void bake_init(hg_class_t *hg_class);
+/**
+ * NOTE: this function currently calls hg_bulk_pool_set_destroy on any pool
+ * sets passed in via bake_set_buffer_pool_set
+ */
+void bake_finalize(void);
+
+/**
  * Obtain identifying information for a bake target through the provided
  * remote mercury address.
  *

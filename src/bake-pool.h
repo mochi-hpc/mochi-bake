@@ -16,4 +16,7 @@ extern hg_bulk_pool_set_t *poolset_rd;
 extern hg_bulk_pool_set_t *poolset_wr;
 extern hg_bulk_pool_set_t *poolset_rw;
 
+void init_noop_pools(hg_class_t *hg_class);
+void fini_pools(void);
+
 #endif

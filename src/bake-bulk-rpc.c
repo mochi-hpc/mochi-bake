@@ -90,14 +90,13 @@ static void bake_bulk_write_ult(hg_handle_t handle)
     bake_bulk_write_out_t out;
     bake_bulk_write_in_t in;
     hg_return_t hret;
-    char* buffer;
+    char* buffer = NULL;
     hg_size_t size;
-    hg_bulk_t bulk_handle = HG_BULK_NULL;
     hg_bulk_pool_set_t *ps = NULL;
+    hg_bulk_au_t au;
     void *pool_bulk_buf = NULL;
     hg_size_t pool_bulk_size;
     hg_uint32_t pool_bulk_segments_found;
-    int get_pool_success;
     struct hg_info *hgi;
     margo_instance_id mid;
     pmemobj_region_id_t* prid;
@@ -134,42 +133,17 @@ static void bake_bulk_write_ult(hg_handle_t handle)
 
     size = in.region_size;
 
-    /* make the "to pool or not to pool" decision */
     ps = (poolset_wr == NULL) ? poolset_rw : poolset_wr;
-    if (ps != NULL) bulk_handle = hg_bulk_pool_set_get(ps, size);
-    if (bulk_handle != HG_BULK_NULL) {
-        pool_bulk_segments_found = 0;
-        hret = HG_Bulk_access(bulk_handle, 0, size, HG_BULK_WRITE_ONLY, 1,
-                &pool_bulk_buf, &pool_bulk_size, &pool_bulk_segments_found);
-        assert(hret == HG_SUCCESS &&
-                size <= pool_bulk_size &&
-                pool_bulk_segments_found == 1);
-    }
-    get_pool_success = (bulk_handle != HG_BULK_NULL);
-
-    if (!get_pool_success) {
-        /* create bulk handle for local side of transfer */
-        hret = HG_Bulk_create(hgi->hg_class, 1, (void**)(&buffer), &size, 
-            HG_BULK_WRITE_ONLY, &bulk_handle);
-        if(hret != HG_SUCCESS)
-        {
-            out.ret = -1;
-            HG_Free_input(handle, &in);
-            HG_Respond(handle, NULL, NULL, &out);
-            HG_Destroy(handle);
-            return;
-        }
-    }
+    assert(ps != NULL);
+    au = hg_bulk_pool_set_get_alloc(ps, size, (void**)&buffer);
+    assert(au.bulk != HG_BULK_NULL);
 
     hret = margo_bulk_transfer(mid, HG_BULK_PULL, hgi->addr, in.bulk_handle,
-        in.bulk_offset, bulk_handle, 0, size);
+        in.bulk_offset, au.bulk, 0, size);
     if(hret != HG_SUCCESS)
     {
         out.ret = -1;
-        if (get_pool_success)
-            hg_bulk_pool_set_release(ps, bulk_handle);
-        else
-            HG_Bulk_free(bulk_handle);
+        hg_bulk_pool_set_release_au(ps, au);
 
         HG_Free_input(handle, &in);
         HG_Respond(handle, NULL, NULL, &out);
@@ -177,13 +151,14 @@ static void bake_bulk_write_ult(hg_handle_t handle)
         return;
     }
 
-    /* if using the pool, then also need to memcpy out */
-    if (get_pool_success) {
+    if (au.from_pool) {
+        pool_bulk_segments_found = 0;
+        hret = HG_Bulk_access(au.bulk, 0, size, hg_bulk_pool_set_get_flag(ps),
+                1, &pool_bulk_buf, &pool_bulk_size, &pool_bulk_segments_found);
+        assert(hret == HG_SUCCESS && pool_bulk_buf != NULL);
         memcpy(buffer, pool_bulk_buf, size);
-        hg_bulk_pool_set_release(ps, bulk_handle);
     }
-    else
-        HG_Bulk_free(bulk_handle);
+    hg_bulk_pool_set_release_au(ps, au);
 
     out.ret = 0;
 
@@ -346,12 +321,11 @@ static void bake_bulk_read_ult(hg_handle_t handle)
     hg_return_t hret;
     char* buffer;
     hg_size_t size;
-    hg_bulk_t bulk_handle = HG_BULK_NULL;
     hg_bulk_pool_set_t *ps = NULL;
+    hg_bulk_au_t au;
     void *pool_bulk_buf = NULL;
     hg_size_t pool_bulk_size;
     hg_uint32_t pool_bulk_segments_found;
-    int get_pool_success;
     struct hg_info *hgi;
     margo_instance_id mid;
     pmemobj_region_id_t* prid;
@@ -388,54 +362,33 @@ static void bake_bulk_read_ult(hg_handle_t handle)
 
     size = in.region_size;
 
-    /* make the "to pool or not to pool" decision */
     ps = (poolset_rd == NULL) ? poolset_rw : poolset_rd;
-    if (ps != NULL) bulk_handle = hg_bulk_pool_set_get(ps, size);
-    if (bulk_handle != HG_BULK_NULL) {
-        pool_bulk_segments_found = 0;
-        hret = HG_Bulk_access(bulk_handle, 0, size, HG_BULK_READ_ONLY, 1,
+    assert(ps != NULL);
+    au = hg_bulk_pool_set_get_alloc(ps, size, (void**)&buffer);
+    assert(au.bulk != HG_BULK_NULL);
+
+    if (au.from_pool) {
+        hret = HG_Bulk_access(au.bulk, 0, size, HG_BULK_READ_ONLY, 1,
                 &pool_bulk_buf, &pool_bulk_size, &pool_bulk_segments_found);
         assert(hret == HG_SUCCESS &&
                 size <= pool_bulk_size &&
                 pool_bulk_segments_found == 1);
-        /* also need to memcpy in the data */
         memcpy(pool_bulk_buf, buffer, size);
-    }
-    get_pool_success = (bulk_handle != HG_BULK_NULL);
-
-    if (!get_pool_success) {
-        /* create bulk handle for local side of transfer */
-        hret = HG_Bulk_create(hgi->hg_class, 1, (void**)(&buffer), &size, 
-            HG_BULK_READ_ONLY, &bulk_handle);
-        if(hret != HG_SUCCESS)
-        {
-            out.ret = -1;
-            HG_Free_input(handle, &in);
-            HG_Respond(handle, NULL, NULL, &out);
-            HG_Destroy(handle);
-            return;
-        }
     }
 
     hret = margo_bulk_transfer(mid, HG_BULK_PUSH, hgi->addr, in.bulk_handle,
-        in.bulk_offset, bulk_handle, 0, size);
+        in.bulk_offset, au.bulk, 0, size);
     if(hret != HG_SUCCESS)
     {
         out.ret = -1;
-        if (get_pool_success)
-            hg_bulk_pool_set_release(ps, bulk_handle);
-        else
-            HG_Bulk_free(bulk_handle);
+        hg_bulk_pool_set_release_au(ps, au);
         HG_Free_input(handle, &in);
         HG_Respond(handle, NULL, NULL, &out);
         HG_Destroy(handle);
         return;
     }
 
-    if (get_pool_success)
-        hg_bulk_pool_set_release(ps, bulk_handle);
-    else
-        HG_Bulk_free(bulk_handle);
+    hg_bulk_pool_set_release_au(ps, au);
 
     out.ret = 0;
 

@@ -121,6 +121,10 @@ int main(int argc, char **argv)
         return(-1);
     }
 
+    /* init bake bulk */
+    /******************/
+    bake_init(hg_class);
+
     /* set up bulk pool if asked for */
     /* TODO: sanity check the numbers */
     /*********************************/
@@ -208,10 +212,7 @@ int main(int argc, char **argv)
      */
     margo_wait_for_finalize(mid);
 
-    if (argc > 3) {
-        hg_bulk_pool_set_destroy(poolset_read);
-        hg_bulk_pool_set_destroy(poolset_write);
-    }
+    bake_finalize();
 
     ABT_finalize();
 
