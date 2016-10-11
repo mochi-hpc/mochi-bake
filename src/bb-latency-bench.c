@@ -82,6 +82,10 @@ int main(int argc, char **argv)
         return(-1);
     }
 
+    // FIXME: remove bake_init/finalize from the client API once we
+    // figure out initialization API/semantics
+    bake_init(bake_get_class());
+
     /* set up bulk pool if asked for */
     /* TODO: sanity check the numbers */
     /*********************************/
@@ -95,18 +99,27 @@ int main(int argc, char **argv)
         else if (strcmp(argv[9], "NONE") == 0) topt = HG_BULK_POOL_THREAD_NONE;
         else {
             fprintf(stderr, "bad thread type argument %s\n", argv[9]);
+            free(measurement_array);
+            bake_finalize();
+            ABT_finalize();
             return(-1);
         }
         hret = hg_bulk_pool_set_create(bake_get_class(), npools, count, size,
                 multiple, HG_BULK_READ_ONLY, topt, &poolset_read);
         if (hret != HG_SUCCESS) {
             fprintf(stderr, "failed to create bulk buffer pool\n");
+            free(measurement_array);
+            bake_finalize();
+            ABT_finalize();
             return(-1);
         }
         hret = hg_bulk_pool_set_create(bake_get_class(), npools, count, size,
                 multiple, HG_BULK_WRITE_ONLY, topt, &poolset_write);
         if (hret != HG_SUCCESS) {
             fprintf(stderr, "failed to create bulk buffer pool\n");
+            free(measurement_array);
+            bake_finalize();
+            ABT_finalize();
             return(-1);
         }
         bake_set_buffer_pool_set(poolset_read);
@@ -125,12 +138,8 @@ int main(int argc, char **argv)
         bench_routine_print("read", cur_size, iterations, measurement_array);
     }
 
-    if (argc > 5) {
-        hg_bulk_pool_set_destroy(poolset_read);
-        hg_bulk_pool_set_destroy(poolset_write);
-    }
-
     bake_release_instance(bti);
+    bake_finalize();
 
     ABT_finalize();
 

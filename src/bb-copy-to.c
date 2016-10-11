@@ -89,11 +89,16 @@ int main(int argc, char **argv)
         return(-1);
     }
 
+    // FIXME: remove bake_init/finalize from the client API once we
+    // figure out initialization API/semantics
+    bake_init(bake_get_class());
+
     /* create region */
     ret = bake_bulk_create(bti, statbuf.st_size, &rid);
     if(ret != 0)
     {
         bake_release_instance(bti);
+        bake_finalize();
         ABT_finalize();
         munmap(local_region, statbuf.st_size);
         close(fd);
@@ -111,6 +116,7 @@ int main(int argc, char **argv)
     if(ret != 0)
     {
         bake_release_instance(bti);
+        bake_finalize();
         ABT_finalize();
         munmap(local_region, statbuf.st_size);
         close(fd);
@@ -125,6 +131,7 @@ int main(int argc, char **argv)
     if(ret != 0)
     {
         bake_release_instance(bti);
+        bake_finalize();
         ABT_finalize();
         fprintf(stderr, "Error: bake_bulk_persist()\n");
         return(-1);
@@ -135,6 +142,7 @@ int main(int argc, char **argv)
     if(ret != 0)
     {
         bake_release_instance(bti);
+        bake_finalize();
         ABT_finalize();
         fprintf(stderr, "Error: bake_bulk_get_size()\n");
         return(-1);
@@ -169,6 +177,7 @@ int main(int argc, char **argv)
         }
     }
    
+    bake_finalize();
     ABT_finalize();
 
     return(0);

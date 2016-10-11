@@ -59,11 +59,16 @@ int main(int argc, char **argv)
         return(-1);
     }
 
+    // FIXME: remove bake_init/finalize from the client API once we
+    // figure out initialization API/semantics
+    bake_init(bake_get_class());
+
     region_fd = open(argv[2], O_RDONLY);
     if(region_fd < 0)
     {
         perror("open rid");
         bake_release_instance(bti);
+        bake_finalize();
         ABT_finalize();
         return(-1);
     }
@@ -74,6 +79,7 @@ int main(int argc, char **argv)
         perror("read");
         close(region_fd);
         bake_release_instance(bti);
+        bake_finalize();
         ABT_finalize();
         return(-1);
     }
@@ -84,6 +90,7 @@ int main(int argc, char **argv)
     {
         fprintf(stderr, "Error: bake_bulk_get_size()\n");
         bake_release_instance(bti);
+        bake_finalize();
         ABT_finalize();
         return(-1);
     }
@@ -93,6 +100,7 @@ int main(int argc, char **argv)
     {
         perror("open output");
         bake_release_instance(bti);
+        bake_finalize();
         ABT_finalize();
         return(-1);
     }
@@ -103,6 +111,7 @@ int main(int argc, char **argv)
         perror("ftruncate");
         close(fd);
         bake_release_instance(bti);
+        bake_finalize();
         ABT_finalize();
         return(-1);
     }
@@ -113,6 +122,7 @@ int main(int argc, char **argv)
         perror("mmap");
         close(fd);
         bake_release_instance(bti);
+        bake_finalize();
         ABT_finalize();
         return(-1);
     }
@@ -129,6 +139,7 @@ int main(int argc, char **argv)
         munmap(local_region, check_size);
         close(fd);
         bake_release_instance(bti);
+        bake_finalize();
         ABT_finalize();
         fprintf(stderr, "Error: bake_bulk_read()\n");
         return(-1);
@@ -137,6 +148,7 @@ int main(int argc, char **argv)
     munmap(local_region, check_size);
     close(fd);
     bake_release_instance(bti);
+    bake_finalize();
     ABT_finalize();
 
     return(0);
