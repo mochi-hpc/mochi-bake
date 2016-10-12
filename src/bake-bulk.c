@@ -388,6 +388,7 @@ int bake_bulk_write(
     struct bake_instance *instance = NULL;
     struct bake_handle_cache_el *el = NULL;
     void *pool_bulk_buf = NULL;
+    hg_size_t pool_bulk_size;
 
     if(buf_size <= BAKE_BULK_EAGER_LIMIT)
     {
@@ -408,7 +409,14 @@ int bake_bulk_write(
     assert(ps != NULL);
     au = hg_bulk_pool_set_get_alloc(ps, buf_size, (void**)&buf);
     assert(au.bulk != HG_BULK_NULL);
-    if (au.from_pool) memcpy(pool_bulk_buf, buf, buf_size);
+    if (au.from_pool) {
+        hg_uint32_t pool_bulk_segments_found = 0;
+        hret = HG_Bulk_access(au.bulk, 0, buf_size,
+                hg_bulk_pool_set_get_flag(ps), 1, &pool_bulk_buf,
+                &pool_bulk_size, &pool_bulk_segments_found);
+        assert(hret == HG_SUCCESS && pool_bulk_buf != NULL);
+        memcpy(pool_bulk_buf, buf, buf_size);
+    }
     in.bulk_handle = au.bulk;
 
     el = get_handle(instance, g_hginst.bake_bulk_write_id);
