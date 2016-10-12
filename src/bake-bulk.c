@@ -61,16 +61,6 @@ struct hg_instance g_hginst = {
     .refct = 0,
 };
 
-void bake_init(hg_class_t *hg_class)
-{
-    init_noop_pools(hg_class);
-}
-
-void bake_finalize(void)
-{
-    fini_pools();
-}
-
 static int bake_bulk_eager_read(
     bake_target_id_t bti,
     bake_bulk_region_id_t rid,
@@ -112,6 +102,9 @@ static int hg_instance_init(const char *mercury_dest)
         HG_Finalize(g_hginst.hg_class);
         return(-1);
     }
+
+    /* setup pool set */
+    init_pools(g_hginst.hg_class);
 
     /* register RPCs */
     g_hginst.bake_bulk_probe_id = 
@@ -192,6 +185,7 @@ void hg_instance_finalize(void)
     if(g_hginst.refct == 0)
     {
         margo_finalize(g_hginst.mid);
+        fini_pools();
         HG_Context_destroy(g_hginst.hg_context);
         HG_Finalize(g_hginst.hg_class);
     }
