@@ -121,10 +121,6 @@ int main(int argc, char **argv)
         return(-1);
     }
 
-    /* init bake bulk */
-    /******************/
-    bake_init(hg_class);
-
     /* set up bulk pool if asked for */
     /* TODO: sanity check the numbers */
     /*********************************/
@@ -152,9 +148,24 @@ int main(int argc, char **argv)
             fprintf(stderr, "failed to create bulk buffer pool\n");
             return(-1);
         }
-        bake_set_buffer_pool_set(poolset_read);
-        bake_set_buffer_pool_set(poolset_write);
     }
+    else {
+        // create "noop" pools
+        hret = hg_bulk_pool_set_create(hg_class, 0, 0, 0, 0, HG_BULK_READ_ONLY,
+                HG_BULK_POOL_THREAD_NONE, &poolset_read);
+        if (hret != HG_SUCCESS) {
+            fprintf(stderr, "failed to create (noop) bulk buffer pool\n");
+            return(-1);
+        }
+        hret = hg_bulk_pool_set_create(hg_class, 0, 0, 0, 0,
+                HG_BULK_WRITE_ONLY, HG_BULK_POOL_THREAD_NONE, &poolset_write);
+        if (hret != HG_SUCCESS) {
+            fprintf(stderr, "failed to create (noop) bulk buffer pool\n");
+            return(-1);
+        }
+    }
+    bake_set_buffer_pool_set(poolset_read);
+    bake_set_buffer_pool_set(poolset_write);
 
     /* actually start margo */
     /* provide argobots pools for driving communication progress and
@@ -212,9 +223,10 @@ int main(int argc, char **argv)
      */
     margo_wait_for_finalize(mid);
 
-    bake_finalize();
-
     ABT_finalize();
+
+    hg_bulk_pool_set_destroy(poolset_read);
+    hg_bulk_pool_set_destroy(poolset_write);
 
     HG_Context_destroy(hg_context);
     HG_Finalize(hg_class);
