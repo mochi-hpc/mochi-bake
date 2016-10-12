@@ -97,8 +97,8 @@ int main(int argc, char **argv)
     ret = bake_bulk_create(bti, statbuf.st_size, &rid);
     if(ret != 0)
     {
-        bake_release_instance(bti);
         bake_finalize();
+        bake_release_instance(bti);
         ABT_finalize();
         munmap(local_region, statbuf.st_size);
         close(fd);
@@ -115,8 +115,8 @@ int main(int argc, char **argv)
         statbuf.st_size);
     if(ret != 0)
     {
-        bake_release_instance(bti);
         bake_finalize();
+        bake_release_instance(bti);
         ABT_finalize();
         munmap(local_region, statbuf.st_size);
         close(fd);
@@ -130,8 +130,8 @@ int main(int argc, char **argv)
     ret = bake_bulk_persist(bti, rid);
     if(ret != 0)
     {
-        bake_release_instance(bti);
         bake_finalize();
+        bake_release_instance(bti);
         ABT_finalize();
         fprintf(stderr, "Error: bake_bulk_persist()\n");
         return(-1);
@@ -141,13 +141,14 @@ int main(int argc, char **argv)
     ret = bake_bulk_get_size(bti, rid, &check_size);
     if(ret != 0)
     {
-        bake_release_instance(bti);
         bake_finalize();
+        bake_release_instance(bti);
         ABT_finalize();
         fprintf(stderr, "Error: bake_bulk_get_size()\n");
         return(-1);
     }
-    
+
+    bake_finalize();
     bake_release_instance(bti);
 
     if(check_size != statbuf.st_size)
@@ -177,7 +178,6 @@ int main(int argc, char **argv)
         }
     }
    
-    bake_finalize();
     ABT_finalize();
 
     return(0);

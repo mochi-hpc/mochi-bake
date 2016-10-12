@@ -138,8 +138,8 @@ int main(int argc, char **argv)
         bench_routine_print("read", cur_size, iterations, measurement_array);
     }
 
-    bake_release_instance(bti);
     bake_finalize();
+    bake_release_instance(bti);
 
     ABT_finalize();
 
