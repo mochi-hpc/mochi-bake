@@ -631,6 +631,7 @@ int bake_bulk_read(
     in.bulk_handle = HG_BULK_NULL;
 
     ps = (poolset_wr == NULL) ? poolset_rw : poolset_wr;
+    assert(ps != NULL);
     au = hg_bulk_pool_set_get_alloc(ps, buf_size, &buf);
     assert(au.bulk != HG_BULK_NULL);
     in.bulk_handle = au.bulk;

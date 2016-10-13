@@ -62,7 +62,7 @@ void init_pools(hg_class_t *hg_class)
         assert(hret == HG_SUCCESS);
         is_poolset_rd_external = 0;
     }
-    if (poolset_rw == NULL && poolset_rd == NULL) {
+    if (poolset_rw == NULL && poolset_wr == NULL) {
         hret = hg_bulk_pool_set_create(hg_class, 0, 0, 0, 0, HG_BULK_WRITE_ONLY,
                 HG_BULK_POOL_THREAD_NONE, &poolset_wr);
         assert(hret == HG_SUCCESS);
