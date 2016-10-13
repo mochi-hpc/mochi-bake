@@ -435,6 +435,12 @@ int bake_bulk_write(
                 &pool_bulk_size, &pool_bulk_segments_found);
         assert(hret == HG_SUCCESS && pool_bulk_buf != NULL);
         memcpy(pool_bulk_buf, buf, buf_size);
+        DEBUG("using bulk pool for write of size %lu (bulk: %lu)\n",
+                buf_size, pool_bulk_size);
+    }
+    else {
+        DEBUG("using allocated handle for write of size %lu\n",
+                buf_size);
     }
     in.bulk_handle = au.bulk;
 
@@ -665,6 +671,14 @@ int bake_bulk_read(
     au = hg_bulk_pool_set_get_alloc(ps, buf_size, &buf);
     assert(au.bulk != HG_BULK_NULL);
     in.bulk_handle = au.bulk;
+    if (au.from_pool) {
+        DEBUG("using bulk pool for read of size %lu (bulk: %lu)\n",
+                buf_size, HG_Bulk_get_size(in.bulk_handle));
+    }
+    else {
+        DEBUG("using allocated handle for read of size %lu\n",
+                buf_size);
+    }
 
     el = get_handle(instance, g_hginst.bake_bulk_read_id);
     assert(el);
