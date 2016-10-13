@@ -12,6 +12,14 @@
 #include "bake-bulk-rpc.h"
 #include "bake-pool.h"
 
+#define DO_DEBUG 0
+#define DEBUG(fmt, ...) \
+    do { \
+        if (DO_DEBUG) { \
+            printf(fmt, ##__VA_ARGS__); \
+        } \
+    } while (0)
+
 /* Refers to a single Mercury/Margo initialization, for now this is shared by
  * all remote targets.  In the future we probably need to support multiple in
  * case we run atop more than one transport at a time.
@@ -22,6 +30,8 @@ struct hg_instance
     hg_class_t *hg_class;
     hg_context_t *hg_context;
     int refct;
+    hg_size_t eager_write_limit;
+    hg_size_t eager_read_limit;
 
     hg_id_t bake_bulk_probe_id;
     hg_id_t bake_bulk_shutdown_id; 
@@ -59,6 +69,8 @@ struct hg_instance g_hginst = {
     .hg_class = NULL,
     .hg_context = NULL,
     .refct = 0,
+    .eager_write_limit = 0,
+    .eager_read_limit = 0
 };
 
 static int bake_bulk_eager_read(
@@ -105,6 +117,16 @@ static int hg_instance_init(const char *mercury_dest)
 
     /* setup pool set */
     init_pools(g_hginst.hg_class);
+
+    /* determine eager-mode limits */
+    g_hginst.eager_write_limit =
+        HG_Class_get_input_eager_size(g_hginst.hg_class);
+    g_hginst.eager_read_limit =
+        HG_Class_get_output_eager_size(g_hginst.hg_class);
+    DEBUG("# Eager write limit: %lu\n",
+            (unsigned long) g_hginst.eager_write_limit);
+    DEBUG("# Eager read limit: %lu\n",
+            (unsigned long) g_hginst.eager_read_limit);
 
     /* register RPCs */
     g_hginst.bake_bulk_probe_id = 
@@ -364,8 +386,6 @@ static int bake_bulk_eager_write(
     return(ret);
 }
 
-#define BAKE_BULK_EAGER_LIMIT 2048
-
 int bake_bulk_write(
     bake_target_id_t bti,
     bake_bulk_region_id_t rid,
@@ -384,10 +404,15 @@ int bake_bulk_write(
     void *pool_bulk_buf = NULL;
     hg_size_t pool_bulk_size;
 
-    if(buf_size <= BAKE_BULK_EAGER_LIMIT)
+    if(hg_proc_bake_bulk_eager_write_in_t_size(buf_size) <=
+            g_hginst.eager_write_limit)
     {
+        DEBUG("performing eager write (buf size: %lu, rpc size: %lu)\n",
+                buf_size, hg_proc_bake_bulk_eager_write_in_t_size(buf_size));
         return(bake_bulk_eager_write(bti, rid, region_offset, buf, buf_size));
     }
+    DEBUG("performing bulk write (buf size: %lu, rpc size: %lu)\n",
+            buf_size, hg_proc_bake_bulk_eager_write_in_t_size(buf_size));
 
     HASH_FIND(hh, instance_hash, &bti, sizeof(bti), instance);
     if(!instance)
@@ -614,10 +639,15 @@ int bake_bulk_read(
     void *pool_bulk_buf = NULL;
     hg_size_t pool_bulk_size;
 
-    if(buf_size <= BAKE_BULK_EAGER_LIMIT)
+    if(hg_proc_bake_bulk_eager_read_out_t_size(buf_size) <=
+            g_hginst.eager_read_limit)
     {
+        DEBUG("performing eager read (buf size: %lu, rpc size: %lu)\n",
+                buf_size, hg_proc_bake_bulk_eager_read_out_t_size(buf_size));
         return(bake_bulk_eager_read(bti, rid, region_offset, buf, buf_size));
     }
+    DEBUG("performing bulk read (buf size: %lu, rpc size: %lu)\n",
+            buf_size, hg_proc_bake_bulk_eager_read_out_t_size(buf_size));
 
     HASH_FIND(hh, instance_hash, &bti, sizeof(bti), instance);
     if(!instance)

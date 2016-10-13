@@ -164,6 +164,21 @@ static inline hg_return_t hg_proc_bake_bulk_eager_write_in_t(hg_proc_t proc, voi
     return(HG_SUCCESS);
 }
 
+/* TODO: mercury doesn't have a mechanism to compute serialized sizes, so we're
+ * implementing a size pass for eager writes ourselves. Hopefully mercury would
+ * be able to do this for us in the future.
+ * This function is brittle, hard-coded based on the eager_write_in_t type and
+ * serialization function */
+static inline hg_size_t hg_proc_bake_bulk_eager_write_in_t_size(
+        hg_size_t buf_size)
+{
+    return
+        sizeof(((bake_target_id_t*)0)->id) +
+        sizeof(bake_bulk_region_id_t) +
+        sizeof(uint64_t) +
+        sizeof(uint32_t) +
+        buf_size;
+}
 
 static inline hg_return_t hg_proc_bake_bulk_eager_read_out_t(hg_proc_t proc, void *v_out_p)
 {
@@ -184,6 +199,16 @@ static inline hg_return_t hg_proc_bake_bulk_eager_read_out_t(hg_proc_t proc, voi
     }
 
     return(HG_SUCCESS);
+}
+
+/* TODO: see hg_proc_bake_bulk_eager_write_in_t_size */
+static inline hg_size_t hg_proc_bake_bulk_eager_read_out_t_size(
+        hg_size_t buf_size)
+{
+    return
+        sizeof(int32_t) +
+        sizeof(uint32_t) +
+        buf_size;
 }
 
 #endif /* __BAKE_BULK_RPC */
