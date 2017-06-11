@@ -156,13 +156,16 @@ static void bench_routine_write(bake_target_id_t bti, int iterations, double *me
     double tm1, tm2;
     char *buffer;
     uint64_t region_offset = 0;
+    uint64_t region_size = 0;
     int i;
 
     buffer = calloc(1, size);
     assert(buffer);
 
+    region_size = (uint64_t)size * (uint64_t)iterations;
+
     /* create region */
-    ret = bake_bulk_create(bti, size*iterations, &rid);
+    ret = bake_bulk_create(bti, region_size, &rid);
     assert(ret == 0);
 
     sleep(1);
