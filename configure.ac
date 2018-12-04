@@ -86,6 +86,8 @@ LIBS="$REMI_LIBS $LIBS"
 CPPFLAGS="$REMI_CFLAGS $CPPFLAGS"
 CFLAGS="$REMI_CFLAGS $CFLAGS"
 
+AC_ARG_ENABLE(sizecheck, [Adds a header in regions to keep track of region sizes], 
+		[AC_DEFINE([USE_SIZECHECK_HEADERS], 1, [Enable sizechecks])], [])
+
 AC_CONFIG_FILES([Makefile maint/bake-client.pc maint/bake-server.pc])
 AC_OUTPUT
- 

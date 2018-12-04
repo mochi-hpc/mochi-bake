@@ -31,7 +31,7 @@ lib_LTLIBRARIES = src/libbake-client.la src/libbake-server.la
 src_libbake_client_la_SOURCES =
 src_libbake_server_la_SOURCES =
 
-LDADD = src/libbake-client.la
+LDADD = src/libbake-client.la src/libbake-server.la
 
 pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = \
@@ -44,4 +44,3 @@ include Make.rules
 include $(top_srcdir)/src/Makefile.subdir
 include $(top_srcdir)/tests/Makefile.subdir
 include $(top_srcdir)/tests/proxy/Makefile.subdir
-

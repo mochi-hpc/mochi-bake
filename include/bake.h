@@ -37,6 +37,7 @@ typedef struct {
 #define BAKE_ERR_UNKNOWN_REGION     (-8) /* Region id could not be found */
 #define BAKE_ERR_OUT_OF_BOUNDS      (-9) /* Attempting an out of bound access */
 #define BAKE_ERR_REMI              (-10) /* Error related to REMI */
+#define BAKE_ERR_OP_UNSUPPORTED    (-11) /* Operation not supported */
 
 #ifdef __cplusplus
 }

@@ -182,7 +182,7 @@ int main(int argc, char **argv)
     munmap(local_region, statbuf.st_size);
     close(fd);
 
-    ret = bake_persist(bph, rid);
+    ret = bake_persist(bph, rid, 0, statbuf.st_size);
     if(ret != 0)
     {
         bake_provider_handle_release(bph);

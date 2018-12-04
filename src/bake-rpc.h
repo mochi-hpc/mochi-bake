@@ -50,7 +50,9 @@ MERCURY_GEN_PROC(bake_eager_write_out_t,
 
 /* BAKE persist */
 MERCURY_GEN_PROC(bake_persist_in_t,
-    ((bake_region_id_t)(rid)))
+    ((bake_region_id_t)(rid))\
+    ((uint64_t)(offset))\
+    ((uint64_t)(size)))
 MERCURY_GEN_PROC(bake_persist_out_t,
     ((int32_t)(ret)))
 
@@ -125,6 +127,7 @@ MERCURY_GEN_PROC(bake_remove_out_t,
 /* BAKE migrate region */
 MERCURY_GEN_PROC(bake_migrate_region_in_t,
     ((bake_region_id_t)(source_rid))\
+    ((uint64_t)(region_size))\
     ((int32_t)(remove_src))\
     ((hg_const_string_t)(dest_addr))\
     ((uint16_t)(dest_provider_id))\

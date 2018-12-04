@@ -475,7 +475,9 @@ int bake_create(
 
 int bake_persist(
     bake_provider_handle_t provider,
-    bake_region_id_t rid)
+    bake_region_id_t rid,
+    size_t offset,
+    size_t size)
 {
     hg_return_t hret;
     hg_handle_t handle;
@@ -484,6 +486,8 @@ int bake_persist(
     int ret;
 
     in.rid = rid;
+    in.offset = offset;
+    in.size = size;
 
     hret = margo_create(provider->client->mid, provider->addr,
             provider->client->bake_persist_id, &handle);
@@ -729,6 +733,7 @@ int bake_get_data(
 int bake_migrate_region(
         bake_provider_handle_t source,
         bake_region_id_t source_rid,
+        size_t region_size,
         int remove_source,
         const char* dest_addr,
         uint16_t dest_provider_id,
@@ -742,6 +747,7 @@ int bake_migrate_region(
     int ret;
 
     in.source_rid       = source_rid;
+    in.region_size      = region_size;
     in.remove_src       = remove_source;
     in.dest_addr        = dest_addr;
     in.dest_provider_id = dest_provider_id;

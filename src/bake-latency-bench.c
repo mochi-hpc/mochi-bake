@@ -167,7 +167,7 @@ static void bench_routine_write(bake_provider_handle_t bph, bake_target_id_t bti
     }
 
     /* persist */
-    ret = bake_persist(bph, rid);
+    ret = bake_persist(bph, rid, 0, size*iterations);
     assert(ret == 0);
 
     free(buffer);

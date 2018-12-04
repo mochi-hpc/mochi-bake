@@ -43,7 +43,9 @@ typedef struct
 } pmemobj_region_id_t;
 
 typedef struct {
+#ifdef USE_SIZECHECK_HEADERS
     uint64_t size;
+#endif
     char data[1];
 } region_content_t;
 
@@ -423,7 +425,12 @@ static void bake_create_ult(hg_handle_t handle)
 
     prid = (pmemobj_region_id_t*)out.rid.data;
 
+#ifdef USE_SIZECHECK_HEADERS
     size_t content_size = in.region_size + sizeof(uint64_t);
+#else
+    size_t content_size = in.region_size;
+#endif
+
     int ret = pmemobj_alloc(entry->pmem_pool, &prid->oid,
             content_size, 0, NULL, NULL);
     if(ret != 0) {
@@ -436,9 +443,13 @@ static void bake_create_ult(hg_handle_t handle)
         out.ret = BAKE_ERR_PMEM;
         goto finish;
     }
+#ifdef USE_SIZECHECK_HEADERS
     region->size = in.region_size;
+#endif
     PMEMobjpool* pmem_pool = pmemobj_pool_by_oid(prid->oid);
-    pmemobj_persist(pmem_pool, &(region->size), sizeof(region->size));
+#ifdef USE_SIZECHECK_HEADERS
+    pmemobj_persist(pmem_pool, region, sizeof(region->size));
+#endif
 
     out.ret = BAKE_SUCCESS;
 
@@ -499,10 +510,12 @@ static void bake_write_ult(hg_handle_t handle)
         goto finish;
     }
 
+#ifdef USE_SIZECHECK_HEADERS
     if(in.region_offset + in.bulk_size > region->size) {
         out.ret = BAKE_ERR_OUT_OF_BOUNDS;
         goto finish;
     }
+#endif
 
     buffer = region->data + in.region_offset;
 
@@ -599,10 +612,12 @@ static void bake_eager_write_ult(hg_handle_t handle)
         goto finish;
     }
 
+#ifdef USE_SIZECHECK_HEADERS
     if(in.size + in.region_offset > region->size) {
         out.ret = BAKE_ERR_OUT_OF_BOUNDS;
         goto finish;
     }
+#endif
 
     buffer = region->data + in.region_offset;
 
@@ -664,7 +679,7 @@ static void bake_persist_ult(hg_handle_t handle)
 
     /* TODO: should this have an abt shim in case it blocks? */
     PMEMobjpool* pmem_pool = pmemobj_pool_by_oid(prid->oid);
-    pmemobj_persist(pmem_pool, buffer, region->size);
+    pmemobj_persist(pmem_pool, buffer + in.offset, in.size);
 
     out.ret = BAKE_SUCCESS;
 
@@ -743,7 +758,9 @@ static void bake_create_write_persist_ult(hg_handle_t handle)
         out.ret = BAKE_ERR_PMEM;
         goto finish;
     }
+#ifdef USE_SIZECHECK_HEADERS
     region->size = in.bulk_size;
+#endif
     buffer = region->data;
 
     /* create bulk handle for local side of transfer */
@@ -824,6 +841,7 @@ static void bake_get_size_ult(hg_handle_t handle)
         goto finish;
     }
 
+#ifdef USE_SIZECHECK_HEADERS
     prid = (pmemobj_region_id_t*)in.rid.data;
     /* lock provider */
     lock = svr_ctx->lock;
@@ -836,6 +854,9 @@ static void bake_get_size_ult(hg_handle_t handle)
     }
     out.size = region->size;
     out.ret = BAKE_SUCCESS;
+#else
+    out.ret = BAKE_ERR_OP_UNSUPPORTED;
+#endif
 
 finish:
     if(lock != ABT_RWLOCK_NULL)
@@ -961,17 +982,20 @@ static void bake_read_ult(hg_handle_t handle)
         goto finish;
     }
 
+    size_to_read = in.bulk_size;
+
+#ifdef USE_SIZECHECK_HEADERS
     if(in.region_offset > region->size)
     {
         out.ret = BAKE_ERR_OUT_OF_BOUNDS;
         goto finish;
     }
-
     if(in.region_offset + in.bulk_size > region->size) {
         size_to_read = region->size - in.region_offset;
     } else {
         size_to_read = in.bulk_size;
     }
+#endif
 
     buffer = region->data + in.region_offset;
 
@@ -1069,17 +1093,18 @@ static void bake_eager_read_ult(hg_handle_t handle)
         goto finish;
     }
 
+    size_to_read = in.size;
+
+#ifdef USE_SIZECHECK_HEADERS
     if(in.region_offset > region->size)
     {
         out.ret = BAKE_ERR_OUT_OF_BOUNDS;
         goto finish;
     }
-
     if(in.region_offset + in.size > region->size) {
         size_to_read = region->size - in.region_offset;
-    } else {
-        size_to_read = in.size;
     }
+#endif
 
     buffer = region->data + in.region_offset;
 
@@ -1213,9 +1238,18 @@ static void bake_migrate_region_ult(hg_handle_t handle)
         out.ret = BAKE_ERR_UNKNOWN_REGION;
         goto finish;
     }
+
     /* get the size of the region */
-    size_t region_size = region->size;
+    size_t region_size = in.region_size;
     char* region_data  = region->data;
+
+#ifdef USE_SIZECHECK_HEADERS
+    /* check region size */
+    if(in.region_size != region->size) {
+        out.ret = BAKE_ERR_INVALID_ARG;
+        goto finish;
+    }
+#endif
 
     /* lookup the address of the destination provider */
     hret = margo_addr_lookup(mid, in.dest_addr, &dest_addr);

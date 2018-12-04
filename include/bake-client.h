@@ -189,11 +189,15 @@ int bake_proxy_write(
  *
  * @param [in] provider provider handle
  * @param [in] rid identifier for region
+ * @param [in] offset offset in the region
+ * @param [in] size of the region
  * @return BAKE_SUCCESS or corresponding error code.
  */
 int bake_persist(
         bake_provider_handle_t provider,
-        bake_region_id_t rid);
+        bake_region_id_t rid,
+        size_t offset,
+        size_t size);
 
 /**
  * Creates a bounded-size BAKE region, writes data into it, and persists
@@ -326,6 +330,7 @@ int bake_proxy_read(
  *
  * @param source Source provider.
  * @param source_rid Region to migrate.
+ * @param region_size Size of the region to migrate.
  * @param remove_source Whether the source region should be removed.
  * @param dest_addr Address of the destination provider.
  * @param dest_provider_id Id of the destination provider.
@@ -337,42 +342,12 @@ int bake_proxy_read(
 int bake_migrate_region(
         bake_provider_handle_t source,
         bake_region_id_t source_rid,
+        size_t region_size,
         int remove_source,
         const char* dest_addr,
         uint16_t dest_provider_id,
         bake_target_id_t dest_target_id,
         bake_region_id_t* dest_rid);
-
-/** 
- * @brief Requests the source provider to migrate a particular
- * region (source_rid) to a destination provider. After the call,
- * the designated region will have been removed from the source
- * and the dest_rid parameter will be set to the new region id
- * in the destination provider.
- *
- * @param source Source provider.
- * @param source_rid Region to migrate.
- * @param remove_source Whether the source region should be removed.
- * @param dest_addr Address of the destination provider.
- * @param dest_provider_id Id of the destination provider.
- * @param dest_target_id Destination target.
- * @param dest_rid Resulting region id in the destination target.
- *
- * @return BAKE_SUCCESS or corresponding error code.
- */
-__attribute__((deprecated("use bake_migrate_region instead")))
-inline int bake_migrate(
-        bake_provider_handle_t source,
-        bake_region_id_t source_rid,
-        int remove_source,
-        const char* dest_addr,
-        uint16_t dest_provider_id,
-        bake_target_id_t dest_target_id,
-        bake_region_id_t* dest_rid)
-{
-    return bake_migrate_region(source, source_rid, remove_source,
-            dest_addr, dest_provider_id, dest_target_id, dest_rid);
-}
 
 /**
  * @brief Migrates a full target from a provider to another.
