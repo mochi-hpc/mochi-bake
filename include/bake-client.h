@@ -238,7 +238,10 @@ int bake_create_write_persist_proxy(
         bake_region_id_t *rid);
 
 /**
- * Checks the size of an existing BAKE region. 
+ * Checks the size of an existing BAKE region.
+ * This function only works if Bake has been compiled with --enable-sizecheck,
+ * otherwise Bake has no way of knowing the size of regions and it is up to
+ * the user to track the region sizes in some other ways.
  *
  * @param [in] provider provider handle
  * @param [in] rid identifier for region
