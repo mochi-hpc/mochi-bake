@@ -82,6 +82,18 @@ typedef struct bake_server_context_t
     remi_provider_t remi_provider;
 } bake_server_context_t;
 
+struct pipeline_ult_arg {
+    margo_instance_id   mid;            // margo instance
+    void * local_buf_ptr;
+    unsigned long local_buf_size;
+    margo_bulk_pool_t   buf_pool;       // pool of buffers
+    hg_addr_t           remote_addr;    // remote address
+    hg_bulk_t           remote_bulk;    // remote bulk handle for transfers
+    size_t              remote_offset;  // remote offset at which to take the data
+    int             ret;            // return value of the xfer_ult function
+};
+
+
 typedef struct xfer_args {
     margo_instance_id   mid;            // margo instance
     size_t              size;           // size of data to transfer
@@ -99,6 +111,7 @@ static void bake_server_finalize_cb(void *data);
 
 static int bake_target_post_migration_callback(remi_fileset_t fileset, void* provider);
 
+static void pipeline_ult(void* _args);
 static void xfer_ult(xfer_args* args);
 
 int bake_makepool(
@@ -992,8 +1005,11 @@ static void bake_create_write_persist_ult(hg_handle_t handle)
 
     if(xfer_buf_size == 0 
     || xfer_buf_count == 0
+#if 0
     || xfer_buf_size > in.bulk_size) { // don't use an intermediate buffer
-
+#else
+    ) {
+#endif
         /* create bulk handle for local side of transfer */
         hret = margo_bulk_create(mid, 1, (void**)(&memory), &in.bulk_size,
             HG_BULK_WRITE_ONLY, &bulk_handle);
@@ -1015,6 +1031,7 @@ static void bake_create_write_persist_ult(hg_handle_t handle)
 
     } else {
 
+#if 0
         // (1) compute the maximum number of ULTs that can handle this transfer
         // as well as the number of individual transfers needed given the buffer sizes
 
@@ -1060,7 +1077,42 @@ static void bake_create_write_persist_ult(hg_handle_t handle)
         // (3) join and free the ULTs
         ABT_thread_join_many(num_threads, ults);
         ABT_thread_free_many(num_threads, ults);
+#else
+        /* experimental pipelining implementation */
+        int i=0;
+        int j=0;
+        ABT_thread tid_array[16]; /* TODO: dynamic, or reuse as completed */
+        struct pipeline_ult_arg arg_array[16];
+        unsigned long issued = 0;
 
+        while(issued < in.bulk_size)
+        {
+            assert(i < 16); /* TODO: dynamic, or reuse as completed */
+            arg_array[i].local_buf_ptr = memory + issued;
+            arg_array[i].local_buf_size = xfer_buf_size;
+            if(arg_array[i].local_buf_size > (in.bulk_size - issued))
+                arg_array[i].local_buf_size  = in.bulk_size - issued;
+            arg_array[i].mid           = mid;
+            arg_array[i].buf_pool      = entry->xfer_bulk_pool;
+            arg_array[i].remote_addr   = src_addr;
+            arg_array[i].remote_bulk   = in.bulk_handle;
+            arg_array[i].remote_offset = issued;
+            arg_array[i].ret           = 0;
+
+            /* TODO: use handler pool or a dedicated pool elsewhere? */
+            ABT_thread_create(handler_pool, pipeline_ult, &arg_array[i], ABT_THREAD_ATTR_NULL, &tid_array[i]);
+
+            issued += arg_array[i].local_buf_size;
+            i++;
+        }
+
+        while(j<i)
+        {
+            ABT_thread_join(tid_array[j]);
+            j++;
+        }
+
+#endif
     }
 
     TIMERS_END_STEP(3);
@@ -1899,6 +1951,44 @@ static int bake_target_post_migration_callback(remi_fileset_t fileset, void* uar
     remi_fileset_get_root(fileset, args.root, &root_size);
     remi_fileset_foreach_file(fileset, migration_fileset_cb, &args);
     return 0;
+}
+
+static void pipeline_ult(void* _arg)
+{
+    struct pipeline_ult_arg *arg = _arg;
+    int ret;
+    void * local_buf_ptr;
+    size_t tmp_buf_size;
+    int tmp_count;
+    hg_bulk_t local_bulk = HG_BULK_NULL;
+
+    ret = margo_bulk_pool_get(arg->buf_pool, &local_bulk);
+    assert(ret == 0);
+
+    ret = margo_bulk_access(local_bulk, 0,
+            arg->local_buf_size, HG_BULK_READWRITE, 1,
+            &local_buf_ptr, &tmp_buf_size, &tmp_count);
+    assert(ret == 0);
+
+    ret = margo_bulk_transfer(arg->mid, HG_BULK_PULL,
+                arg->remote_addr, arg->remote_bulk,
+                arg->remote_offset,
+                local_bulk, 0, arg->local_buf_size);
+    assert(ret == 0);
+
+    /* NOTE: this is the one line of code with more performance impact than
+     * any other under concurrent load.  Need to refactor in a way that
+     * allocates intermediate buffer on same ES where this memcpy is
+     * executed to get better locality?  The destination is typically going
+     * to a kernel space so we can't control that one easily, but we should
+     * be able to get the intermediate buffer right here.
+     */
+    memcpy(arg->local_buf_ptr, local_buf_ptr, arg->local_buf_size);
+
+    ret = margo_bulk_pool_release(arg->buf_pool, local_bulk);
+    assert(ret == 0);
+
+    return;
 }
 
 static void xfer_ult(xfer_args* args)
