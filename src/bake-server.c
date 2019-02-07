@@ -114,6 +114,20 @@ struct memcpy_arg
     unsigned long size;
 };
 
+struct persist_arg
+{
+    PMEMobjpool *pool;
+    const void* addr;
+    size_t len;
+};
+
+struct alloc_arg
+{
+    PMEMobjpool *pool;
+    PMEMoid oid;
+    size_t size;
+};
+
 static void bake_server_finalize_cb(void *data);
 
 static int bake_target_post_migration_callback(remi_fileset_t fileset, void* provider);
@@ -921,6 +935,23 @@ finish:
 }
 DEFINE_MARGO_RPC_HANDLER(bake_persist_ult)
 
+static void alloc_tasklet(void *_arg)
+{
+    struct alloc_arg *arg = _arg;
+
+    pmemobj_alloc(arg->pool, &arg->oid, arg->size, 0, NULL, NULL);
+    return;
+}
+
+
+static void persist_tasklet(void *_arg)
+{
+    struct persist_arg *arg = _arg;
+
+    pmemobj_persist(arg->pool, arg->addr, arg->len);
+    return;
+}
+
 static void bake_create_write_persist_ult(hg_handle_t handle)
 {
     TIMERS_INITIALIZE("start","alloc","bulk_create","bulk_xfer","persist","respond");
@@ -942,6 +973,7 @@ static void bake_create_write_persist_ult(hg_handle_t handle)
     int ret;
     pmemobj_region_id_t* prid;
     ABT_rwlock lock = ABT_RWLOCK_NULL;
+    ABT_task tid;
 
     memset(&out, 0, sizeof(out));
 
@@ -989,6 +1021,7 @@ static void bake_create_write_persist_ult(hg_handle_t handle)
 
     prid = (pmemobj_region_id_t*)out.rid.data;
 
+#if 1
     ret = pmemobj_alloc(entry->pmem_pool, &prid->oid,
             content_size, 0, NULL, NULL);
     if(ret != 0)
@@ -996,6 +1029,18 @@ static void bake_create_write_persist_ult(hg_handle_t handle)
         out.ret = BAKE_ERR_PMEM;
         goto finish;
     }
+
+#else 
+    struct alloc_arg a_arg;
+    a_arg.pool = entry->pmem_pool;
+    a_arg.size = content_size;
+
+    ret = ABT_task_create(del_pool, alloc_tasklet, &a_arg, &tid);
+    assert(ret == 0);
+    ret = ABT_task_join(tid);
+    assert(ret == 0);
+    prid->oid = a_arg.oid;
+#endif
 
     TIMERS_END_STEP(1);
 
@@ -1141,8 +1186,16 @@ static void bake_create_write_persist_ult(hg_handle_t handle)
 
     TIMERS_END_STEP(3);
 
-    /* TODO: should this have an abt shim in case it blocks? */
-    pmemobj_persist(entry->pmem_pool, region, content_size);
+    struct persist_arg p_arg;
+    p_arg.pool = entry->pmem_pool;
+    p_arg.addr = region;
+    p_arg.len = content_size;
+    ret = ABT_task_create(del_pool, persist_tasklet, &p_arg, &tid);
+    assert(ret == 0);
+    ret = ABT_task_join(tid);
+    assert(ret == 0);
+
+    //pmemobj_persist(entry->pmem_pool, region, content_size);
 
     out.ret = BAKE_SUCCESS;
 
@@ -1976,6 +2029,7 @@ static int bake_target_post_migration_callback(remi_fileset_t fileset, void* uar
     remi_fileset_foreach_file(fileset, migration_fileset_cb, &args);
     return 0;
 }
+
 
 static void memcpy_tasklet(void *_arg)
 {
