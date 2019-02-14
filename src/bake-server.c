@@ -1133,6 +1133,7 @@ static void bake_create_write_persist_ult(hg_handle_t handle)
         while(j<i)
         {
             ABT_thread_join(tid_array[j]);
+            ABT_thread_free(&tid_array[j]);
             j++;
         }
 
