@@ -1178,6 +1178,7 @@ static void bake_create_write_persist_ult(hg_handle_t handle)
         while(j<i)
         {
             ABT_thread_join(tid_array[j]);
+            ABT_thread_free(&tid_array[j]);
             j++;
         }
 
@@ -1193,6 +1194,7 @@ static void bake_create_write_persist_ult(hg_handle_t handle)
     ret = ABT_task_create(del_pool, persist_tasklet, &p_arg, &tid);
     assert(ret == 0);
     ret = ABT_task_join(tid);
+    ret = ABT_task_free(&tid);
     assert(ret == 0);
 
     //pmemobj_persist(entry->pmem_pool, region, content_size);
@@ -2073,6 +2075,9 @@ static void pipeline_ult(void* _arg)
     assert(ret == 0);
     
     ret = ABT_task_join(tid);
+    assert(ret == 0);
+    ret = ABT_task_free(&tid);
+    assert(ret == 0);
 
     //memcpy(arg->local_buf_ptr, local_buf_ptr, arg->local_buf_size);
 
