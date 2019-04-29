@@ -47,6 +47,16 @@ typedef struct {
  */
 void bake_perror(char *s, int ret);
 
+/**
+ * Convert region id into printable string for debugging purposes
+ *
+ * @param[in] str string to fill in
+ * @param[in] size length of string, not including terminator.  If rid
+ *                 string is longer than this it will be truncated.
+ * @param[in] rid region_id
+ */
+void bake_print_dbg_region_id_t(char *str, size_t size, bake_region_id_t rid);
+
 #ifdef __cplusplus
 }
 #endif

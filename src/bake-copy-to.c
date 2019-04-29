@@ -38,6 +38,7 @@ int main(int argc, char **argv)
     char* local_region;
     int region_fd;
     char region_file[128];
+    char region_str[128];
 #ifdef USE_SIZECHECK_HEADERS
     uint64_t  check_size;
 #endif
@@ -161,6 +162,9 @@ int main(int argc, char **argv)
         bake_perror("Error: bake_create()", ret);
         return(-1);
     }
+
+    bake_print_dbg_region_id_t(region_str, 127, rid);
+    printf("# created bake region %s\n", region_str);
 
     /* transfer data */
     ret = bake_write(

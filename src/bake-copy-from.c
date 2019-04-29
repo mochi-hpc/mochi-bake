@@ -36,6 +36,7 @@ int main(int argc, char **argv)
     char* local_region;
     int region_fd;
     uint64_t size;
+    char region_str[128];
  
     if(argc != 6)
     {
@@ -110,6 +111,9 @@ int main(int argc, char **argv)
         return(-1);
     }
     close(region_fd);
+
+    bake_print_dbg_region_id_t(region_str, 127, rid);
+    printf("# will read bake region %s\n", region_str);
 
 #ifdef USE_SIZECHECK_HEADERS
     uint64_t check_size;
