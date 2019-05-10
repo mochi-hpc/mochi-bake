@@ -49,6 +49,9 @@ static char * bake_err_str(int ret)
         case BAKE_ERR_OP_UNSUPPORTED:
             return "Operation not supported";
             break;
+        case BAKE_ERR_IO:
+            return "I/O error";
+            break;
         default:
             return "Unknown error";
             break;

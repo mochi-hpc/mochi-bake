@@ -286,6 +286,7 @@ int bake_shutdown_service(bake_client_t client, hg_addr_t addr)
     return margo_shutdown_remote_instance(client->mid, addr);
 }
 
+#if 0
 static int bake_eager_write(
     bake_provider_handle_t provider,
     bake_region_id_t rid,
@@ -342,6 +343,7 @@ finish:
 
     return ret;
 }
+#endif
 
 int bake_write(
     bake_provider_handle_t provider,
@@ -357,8 +359,11 @@ int bake_write(
     bake_write_out_t out;
     int ret;
 
+    /* no eager for now, because it complicates file I/O alignment */
+#if 0
     if(buf_size <= provider->eager_limit)
         return(bake_eager_write(provider, rid, region_offset, buf, buf_size));
+#endif
 
     TIMERS_INITIALIZE("bulk_create", "forward", "end");
 
@@ -1144,6 +1149,10 @@ int bake_read(
     bake_read_out_t out;
     int ret;
 
+    /* read not implemented */
+    fprintf(stderr, "Error: bake_read not implemented.\n");
+    return(BAKE_ERR_OP_UNSUPPORTED);
+
     if(buf_size <= provider->eager_limit)
         return(bake_eager_read(provider, rid, region_offset, buf, buf_size, bytes_read));
 
@@ -1275,6 +1284,10 @@ int bake_remove(
     bake_remove_in_t in;
     bake_remove_out_t out;
     int ret;
+
+    /* remove not implemented */
+    fprintf(stderr, "Error: bake_remove not implemented.\n");
+    return(BAKE_ERR_OP_UNSUPPORTED);
 
     in.rid = rid;
 

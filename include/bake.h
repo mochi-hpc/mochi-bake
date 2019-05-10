@@ -20,7 +20,7 @@ typedef struct {
 /**
  * Persistent, opaque identifier for a region within a BAKE target.
  */
-#define BAKE_REGION_ID_DATA_SIZE 16
+#define BAKE_REGION_ID_DATA_SIZE 24
 typedef struct {
     uint32_t type;
     char data[BAKE_REGION_ID_DATA_SIZE];
@@ -38,6 +38,7 @@ typedef struct {
 #define BAKE_ERR_OUT_OF_BOUNDS      (-9) /* Attempting an out of bound access */
 #define BAKE_ERR_REMI              (-10) /* Error related to REMI */
 #define BAKE_ERR_OP_UNSUPPORTED    (-11) /* Operation not supported */
+#define BAKE_ERR_IO                (-12) /* I/O error */
 
 /**
  * Print bake errors in human-friendly form

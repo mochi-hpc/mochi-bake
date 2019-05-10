@@ -4,16 +4,29 @@
  * See COPYRIGHT in top-level directory.
  */
 
+/* TODO: programmatic way to determine alignment for O_DIRECT.  Using 4096
+ * here because that will pretty much always work.  Likely we can get away
+ * with 512 in most cases, though.
+ */
+
+/* for O_DIRECT */
+#define _GNU_SOURCE
+
+#define PAGE_ROUND_UP(x) ( (((unsigned long)(x)) + 4095)  & (~(4095)) )
+
 #include "bake-config.h"
 
 #include <assert.h>
 #include <libpmemobj.h>
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <fcntl.h>
 #include <margo.h>
 #include <margo-bulk-pool.h>
 #include <remi/remi-client.h>
 #include <remi/remi-server.h>
+#include <abt-io.h>
 #include "bake-server.h"
 #include "uthash.h"
 #include "bake-rpc.h"
@@ -45,7 +58,8 @@ typedef struct
 /* definition of internal BAKE region_id_t identifier for libpmemobj back end */
 typedef struct
 {
-    PMEMoid oid;
+    bake_target_id_t target_id;
+    off_t offset;
 } pmemobj_region_id_t;
 
 typedef struct {
@@ -57,8 +71,12 @@ typedef struct {
 
 typedef struct
 {
-    PMEMobjpool* pmem_pool;
-    bake_root_t* pmem_root;
+    int log_fd;
+    off_t log_offset;
+    ABT_mutex log_offset_mutex;
+    abt_io_instance_id abtioi;
+    /* PMEMobjpool* pmem_pool; */
+    bake_root_t* bake_root;
     bake_target_id_t target_id;
     char* root;
     char* filename;
@@ -85,7 +103,9 @@ typedef struct xfer_args {
     hg_bulk_t           remote_bulk;    // remote bulk handle for transfers
     size_t              remote_offset;  // remote offset at which to take the data
     size_t              bulk_size;
-    char*               local_ptr;
+    abt_io_instance_id  abtioi;
+    int                 log_fd;
+    off_t               log_offset;
     size_t              bytes_issued;
     size_t              bytes_retired;
     margo_bulk_poolset_t poolset;
@@ -124,7 +144,9 @@ static void xfer_ult(void *_args);
 static int write_transfer_data(
     margo_instance_id mid, 
     bake_provider_t svr_ctx,
-    PMEMoid pmoid,
+    abt_io_instance_id abtioi,
+    int fd,
+    off_t offset,
     uint64_t region_offset, 
     hg_bulk_t remote_bulk,
     uint64_t remote_bulk_offset,
@@ -138,26 +160,44 @@ int bake_makepool(
         size_t pool_size,
         mode_t pool_mode)
 {
-    PMEMobjpool *pool;
-    PMEMoid root_oid;
+    /* NOTE: ignoring size and mode for now */
+    int fd = -1;
     bake_root_t *root;
+    int ret;
 
-    pool = pmemobj_create(pool_name, NULL, pool_size, pool_mode);
-    if(!pool)
+    /* TODO: set up abt-io, and start using shims here.  It isn't strictly
+     * needed at this point in the daemon startup, but we should 
+     * exercise it anyway to get an early error if there are any abt-io
+     * problems
+     */
+    fd = open(pool_name, O_WRONLY|O_CREAT|O_DIRECT, S_IRUSR|S_IWUSR);
+    if(!fd)
     {
-        fprintf(stderr, "pmemobj_create: %s\n", pmemobj_errormsg());
-        return BAKE_ERR_PMEM;
+        perror("open");
+        return(BAKE_ERR_IO);
     }
 
-    /* find root */
-    root_oid = pmemobj_root(pool, sizeof(bake_root_t));
-    root = pmemobj_direct(root_oid);
+    /* we'll put a full page at the front of the file; the first bytes of
+     * which will contain the bake_root_t
+     */
+    ret = posix_memalign((void**)(&root), 4096, 4096);
+    assert(ret == 0);
+    memset(root, 0, 4096);
 
     /* store the target id for this bake pool at the root */
     uuid_generate(root->pool_id.id);
-    pmemobj_persist(pool, root, sizeof(bake_root_t));
 
-    pmemobj_close(pool);
+    ret = write(fd, root, 4096);
+    if(ret != 4096)
+    {
+        perror("write");
+        fprintf(stderr, "... does your file system support O_DIRECT? tmpfs does not.\n");
+        free(root);
+        return(BAKE_ERR_IO);
+    }
+    free(root);
+
+    close(fd);
 
     return BAKE_SUCCESS;
 }
@@ -320,30 +360,45 @@ int bake_provider_add_storage_target(
     new_entry->root = NULL;
     new_entry->filename = NULL;
 
-    char* tmp = strrchr(target_name, '/');
+    const char* tmp = strrchr(target_name, '/');
+    if(!tmp)
+        tmp = target_name;
     new_entry->filename = strdup(tmp);
     ptrdiff_t d = tmp - target_name;
     new_entry->root = strndup(target_name, d);
 
-    new_entry->pmem_pool = pmemobj_open(target_name, NULL);
-    if(!(new_entry->pmem_pool)) {
-        fprintf(stderr, "pmemobj_open: %s\n", pmemobj_errormsg());
+    /* initialize an abt-io instance just for this target */
+    /* TODO: make this tunable; 8 just sounds like a pleasant number for now */
+    new_entry->abtioi = abt_io_init(8);
+    /* TODO: error handling */
+    assert(new_entry->abtioi);
+
+    new_entry->log_fd = abt_io_open(new_entry->abtioi, target_name, O_RDWR|O_DIRECT, 0);
+    if(new_entry->log_fd < 0) {
+        perror("open");
         free(new_entry->filename);
         free(new_entry->root);
         free(new_entry);
-        return BAKE_ERR_PMEM;
+        return BAKE_ERR_IO;
     }
+    new_entry->log_offset = 4096;
+    ABT_mutex_create(&new_entry->log_offset_mutex);
 
     /* check to make sure the root is properly set */
-    PMEMoid root_oid = pmemobj_root(new_entry->pmem_pool, sizeof(bake_root_t));
-    new_entry->pmem_root = pmemobj_direct(root_oid);
-    bake_target_id_t key = new_entry->pmem_root->pool_id;
+    // PMEMoid root_oid = pmemobj_root(new_entry->pmem_pool, sizeof(bake_root_t));
+    // new_entry->bake_root = pmemobj_direct(root_oid);
+    ret = posix_memalign((void**)(&new_entry->bake_root), 4096, 4096);
+    assert(ret == 0);
+    ret = abt_io_pread(new_entry->abtioi, new_entry->log_fd, new_entry->bake_root, 4096, 0);
+    assert(ret == 4096);
+    bake_target_id_t key = new_entry->bake_root->pool_id;
     new_entry->target_id = key;
 
     if(uuid_is_null(key.id))
     {
         fprintf(stderr, "Error: BAKE pool %s is not properly initialized\n", target_name);
-        pmemobj_close(new_entry->pmem_pool);
+        close(new_entry->log_fd);
+        free(new_entry->bake_root);
         free(new_entry->filename);
         free(new_entry->root);
         free(new_entry);
@@ -359,7 +414,8 @@ int bake_provider_add_storage_target(
     HASH_FIND(hh, provider->targets, &key, sizeof(bake_target_id_t), check_entry);
     if(check_entry != new_entry) {
         fprintf(stderr, "Error: BAKE could not insert new pmem pool into the hash\n");
-        pmemobj_close(new_entry->pmem_pool);
+        close(new_entry->log_fd);
+        free(new_entry->bake_root);
         free(new_entry->filename);
         free(new_entry->root);
         free(new_entry);
@@ -394,8 +450,9 @@ int bake_provider_remove_storage_target(
     if(!entry) {
         ret = BAKE_ERR_UNKNOWN_TARGET;
     } else {
-        pmemobj_close(entry->pmem_pool);
+        close(entry->log_fd);
         HASH_DEL(provider->targets, entry);
+        free(entry->bake_root);
         free(entry->filename);
         free(entry->root);
         free(entry);
@@ -412,7 +469,8 @@ int bake_provider_remove_all_storage_targets(
     bake_pmem_entry_t *p, *tmp;
     HASH_ITER(hh, provider->targets, p, tmp) {
         HASH_DEL(provider->targets, p);
-        pmemobj_close(p->pmem_pool);
+        close(p->log_fd);
+        free(p->bake_root);
         free(p->filename);
         free(p->root);
         free(p);
@@ -499,12 +557,19 @@ static void bake_create_ult(hg_handle_t handle)
 
     TIMERS_END_STEP(0);
 
-    int ret = pmemobj_alloc(entry->pmem_pool, &prid->oid,
-            content_size, 0, NULL, NULL);
-    if(ret != 0) {
-        out.ret = BAKE_ERR_PMEM;
-        goto finish;
-    }
+    /* round up content_size to nearest page boundary so we stay aligned at 
+     * all times 
+     */
+    content_size = PAGE_ROUND_UP(content_size);
+    
+    /* TODO: technically we should persist the log increment somewhere so
+     * that this space is still reserved after a restart.
+     */
+    prid->offset = entry->log_offset;
+    prid->target_id = in.bti;
+    ABT_mutex_lock(entry->log_offset_mutex);
+    entry->log_offset += content_size;
+    ABT_mutex_unlock(entry->log_offset_mutex);
 
     TIMERS_END_STEP(1);
 
@@ -538,7 +603,9 @@ DEFINE_MARGO_RPC_HANDLER(bake_create_ult)
 static int write_transfer_data(
     margo_instance_id mid, 
     bake_provider_t svr_ctx,
-    PMEMoid pmoid,
+    abt_io_instance_id abtioi,
+    int fd,
+    off_t offset,
     uint64_t region_offset, 
     hg_bulk_t remote_bulk,
     uint64_t remote_bulk_offset,
@@ -547,26 +614,23 @@ static int write_transfer_data(
     hg_addr_t hgi_addr,
     ABT_pool target_pool)
 {
-    region_content_t* region;
-    char* memory;
     hg_addr_t src_addr = HG_ADDR_NULL;
     hg_return_t hret;
     hg_bulk_t bulk_handle = HG_BULK_NULL;
     int ret = 0;
     struct xfer_args x_args = {0};
     size_t i;
+    off_t log_offset;
 
-    /* find memory address for target object */
-    region = pmemobj_direct(pmoid);
-    if(!region)
-        return(BAKE_ERR_UNKNOWN_REGION);
+    log_offset = offset;
 
 #ifdef USE_SIZECHECK_HEADERS
+    assert(0);
     if(region_offset + bulk_size > region->size)
         return(BAKE_ERR_OUT_OF_BOUNDS);
 #endif
 
-    memory = region->data + region_offset;
+    log_offset += region_offset;
 
     /* resolve addr, could be addr of rpc sender (normal case) or a third
      * party (proxy write)
@@ -586,7 +650,13 @@ static int write_transfer_data(
 
     if(global_bake_provider_conf.pipeline_enable == 0)
     {
+#if 1
+    assert(0);
+#else
         /* normal path; no pipeline or intermediate buffers */
+
+        fprintf(stderr, "Error: this build (that backs to files rather than pmdk) only works with pipelining enabled.\n");
+        assert(0);
 
         /* create bulk handle for local side of transfer */
         hret = margo_bulk_create(mid, 1, (void**)(&memory), &bulk_size,
@@ -604,7 +674,7 @@ static int write_transfer_data(
             ret = BAKE_ERR_MERCURY;
             goto finish;
         }
-
+#endif
     } else { 
         
         /* pipelining mode, with intermediate buffers */
@@ -614,7 +684,9 @@ static int write_transfer_data(
         x_args.remote_bulk = remote_bulk;
         x_args.remote_offset = remote_bulk_offset;
         x_args.bulk_size = bulk_size;
-        x_args.local_ptr = memory;
+        x_args.abtioi = abtioi;
+        x_args.log_fd = fd;
+        x_args.log_offset = offset;
         x_args.bytes_issued = 0;
         x_args.bytes_retired = 0;
         x_args.poolset = svr_ctx->poolset;
@@ -645,7 +717,9 @@ static int write_transfer_data(
         ret = x_args.ret;
     }
 
+#if 0
 finish:
+#endif
     if(remote_addr_str)
         margo_addr_free(mid, src_addr);
     margo_bulk_free(bulk_handle);
@@ -666,6 +740,7 @@ static void bake_write_ult(hg_handle_t handle)
     margo_instance_id mid;
     pmemobj_region_id_t* prid;
     ABT_rwlock lock = ABT_RWLOCK_NULL;
+    bake_pmem_entry_t *entry;
 
     memset(&out, 0, sizeof(out));
 
@@ -694,7 +769,10 @@ static void bake_write_ult(hg_handle_t handle)
 
     TIMERS_END_STEP(0);
 
-    out.ret = write_transfer_data(mid, svr_ctx, prid->oid, in.region_offset, in.bulk_handle, in.bulk_offset,
+    entry = find_pmem_entry(svr_ctx, prid->target_id);
+    assert(entry);
+
+    out.ret = write_transfer_data(mid, svr_ctx, entry->abtioi, entry->log_fd, prid->offset, in.region_offset, in.bulk_handle, in.bulk_offset,
         in.bulk_size, in.remote_addr_str, hgi->addr, handler_pool);
     TIMERS_END_STEP(1);
 
@@ -714,6 +792,9 @@ DEFINE_MARGO_RPC_HANDLER(bake_write_ult)
     /* service a remote RPC that writes to a BAKE region in eager mode */
 static void bake_eager_write_ult(hg_handle_t handle)
 {
+#if 1
+    assert(0);
+#else
     TIMERS_INITIALIZE("start","memcpy","respond");
     bake_eager_write_out_t out;
     bake_eager_write_in_t in;
@@ -782,6 +863,7 @@ finish:
     margo_free_input(handle, &in);
     margo_destroy(handle);
     return;
+#endif
 }
 DEFINE_MARGO_RPC_HANDLER(bake_eager_write_ult)
 
@@ -792,9 +874,10 @@ static void bake_persist_ult(hg_handle_t handle)
     bake_persist_out_t out;
     bake_persist_in_t in;
     hg_return_t hret;
-    char* buffer = NULL;
     pmemobj_region_id_t* prid;
     ABT_rwlock lock = ABT_RWLOCK_NULL;
+    bake_pmem_entry_t *entry;
+    int ret;
 
     memset(&out, 0, sizeof(out));
 
@@ -816,27 +899,21 @@ static void bake_persist_ult(hg_handle_t handle)
 
     prid = (pmemobj_region_id_t*)in.rid.data;
 
+    entry = find_pmem_entry(svr_ctx, prid->target_id);
+
     /* lock provider */
     lock = svr_ctx->lock;
     ABT_rwlock_rdlock(lock);
-    /* find memory address for target object */
-    region_content_t* region = pmemobj_direct(prid->oid);
-    if(!region)
-    {
-        out.ret = BAKE_ERR_PMEM;
-        goto finish;
-    }
-    buffer = region->data;
 
     TIMERS_END_STEP(0);
 
-    /* TODO: should this have an abt shim in case it blocks? */
-    PMEMobjpool* pmem_pool = pmemobj_pool_by_oid(prid->oid);
-    pmemobj_persist(pmem_pool, buffer + in.offset, in.size);
+    ret = abt_io_fdatasync(entry->abtioi, entry->log_fd);
+    if(ret != 0)
+        out.ret = BAKE_ERR_IO;
+    else
+        out.ret = BAKE_SUCCESS;
 
     TIMERS_END_STEP(1);
-
-    out.ret = BAKE_SUCCESS;
 
 finish:
     if(lock != ABT_RWLOCK_NULL)
@@ -862,6 +939,7 @@ static void bake_create_write_persist_ult(hg_handle_t handle)
     int ret;
     pmemobj_region_id_t* prid;
     ABT_rwlock lock = ABT_RWLOCK_NULL;
+    bake_pmem_entry_t *entry;
 
     memset(&out, 0, sizeof(out));
 
@@ -890,7 +968,7 @@ static void bake_create_write_persist_ult(hg_handle_t handle)
     ABT_rwlock_rdlock(lock);
 
     /* find the pmem pool */
-    bake_pmem_entry_t* entry = find_pmem_entry(svr_ctx, in.bti);
+    entry = find_pmem_entry(svr_ctx, in.bti);
     if(entry == NULL) {
         out.ret = BAKE_ERR_UNKNOWN_TARGET;
         goto finish;
@@ -906,35 +984,37 @@ static void bake_create_write_persist_ult(hg_handle_t handle)
 
     prid = (pmemobj_region_id_t*)out.rid.data;
 
-    ret = pmemobj_alloc(entry->pmem_pool, &prid->oid,
-            content_size, 0, NULL, NULL);
-    if(ret != 0)
-    {
-        out.ret = BAKE_ERR_PMEM;
-        goto finish;
-    }
+    /* round up content_size to nearest page boundary so we stay aligned at 
+     * all times 
+     */
+    content_size = PAGE_ROUND_UP(content_size);
+    
+    /* TODO: technically we should persist the log increment somewhere so
+     * that this space is still reserved after a restart.
+     */
+    prid->offset = entry->log_offset;
+    prid->target_id = in.bti;
+    ABT_mutex_lock(entry->log_offset_mutex);
+    entry->log_offset += content_size;
+    ABT_mutex_unlock(entry->log_offset_mutex);
 
     TIMERS_END_STEP(1);
 
-    out.ret = write_transfer_data(mid, svr_ctx, prid->oid, 0, in.bulk_handle, in.bulk_offset,
+    out.ret = write_transfer_data(mid, svr_ctx, entry->abtioi, entry->log_fd, prid->offset, 0, in.bulk_handle, in.bulk_offset,
         in.bulk_size, in.remote_addr_str, hgi->addr, handler_pool);
 
     TIMERS_END_STEP(2);
 
     if(out.ret == BAKE_SUCCESS)
     {
-        /* find memory address for target object */
-        region_content_t* region = pmemobj_direct(prid->oid);
-        if(!region)
-        {
-            out.ret = BAKE_ERR_PMEM;
-            goto finish;
-        }
 #ifdef USE_SIZECHECK_HEADERS
+assert(0);
         region->size = in.bulk_size;
 #endif
 
-        pmemobj_persist(entry->pmem_pool, region, content_size);
+        ret = abt_io_fdatasync(entry->abtioi, entry->log_fd);
+        if(ret != 0)
+            out.ret = BAKE_ERR_IO;
     }
 
     TIMERS_END_STEP(3);
@@ -954,6 +1034,10 @@ DEFINE_MARGO_RPC_HANDLER(bake_create_write_persist_ult)
 
 static void bake_eager_create_write_persist_ult(hg_handle_t handle)
 {
+#if 1
+    /* unimplemented */
+    assert(0);
+#else
     TIMERS_INITIALIZE("start","alloc","memcpy","persist","respond");
     bake_eager_create_write_persist_out_t out;
     bake_eager_create_write_persist_in_t in;
@@ -1008,8 +1092,10 @@ static void bake_eager_create_write_persist_ult(hg_handle_t handle)
 
     TIMERS_END_STEP(0);
 
-    ret = pmemobj_alloc(entry->pmem_pool, &prid->oid,
-            content_size, 0, NULL, NULL);
+    /* TODO: fill this in */
+    assert(0);
+    // ret = pmemobj_alloc(entry->pmem_pool, &prid->oid,
+    //        content_size, 0, NULL, NULL);
     if(ret != 0)
     {
         out.ret = BAKE_ERR_PMEM;
@@ -1035,7 +1121,9 @@ static void bake_eager_create_write_persist_ult(hg_handle_t handle)
     TIMERS_END_STEP(2);
 
     /* TODO: should this have an abt shim in case it blocks? */
-    pmemobj_persist(entry->pmem_pool, region, content_size);
+    /* TODO: fill this in */
+    assert(0);
+    // pmemobj_persist(entry->pmem_pool, region, content_size);
 
     TIMERS_END_STEP(3);
 
@@ -1050,6 +1138,7 @@ finish:
     margo_free_input(handle, &in);
     margo_destroy(handle);
     return;
+#endif
 }
 DEFINE_MARGO_RPC_HANDLER(bake_eager_create_write_persist_ult)
 
@@ -1116,6 +1205,9 @@ DEFINE_MARGO_RPC_HANDLER(bake_get_size_ult)
     /* Get the raw pointer of a region */
 static void bake_get_data_ult(hg_handle_t handle)
 {
+#if 1
+assert(0);
+#else
     TIMERS_INITIALIZE("start","respond");
     bake_get_data_out_t out;
     bake_get_data_in_t in;
@@ -1166,6 +1258,7 @@ finish:
     TIMERS_FINALIZE();
     margo_free_input(handle, &in);
     margo_destroy(handle);
+#endif
 }
 DEFINE_MARGO_RPC_HANDLER(bake_get_data_ult)
 
@@ -1185,6 +1278,9 @@ DEFINE_MARGO_RPC_HANDLER(bake_noop_ult)
 /* service a remote RPC that reads from a BAKE region */
 static void bake_read_ult(hg_handle_t handle)
 {
+#if 1
+assert(0);
+#else
     TIMERS_INITIALIZE("start","bulk_create","bulk_xfer","respond");
     bake_read_out_t out;
     bake_read_in_t in;
@@ -1299,6 +1395,7 @@ finish:
     margo_bulk_free(bulk_handle);
     margo_free_input(handle, &in);
     margo_destroy(handle);
+#endif
 }
 DEFINE_MARGO_RPC_HANDLER(bake_read_ult)
 
@@ -1306,6 +1403,9 @@ DEFINE_MARGO_RPC_HANDLER(bake_read_ult)
      * response */
 static void bake_eager_read_ult(hg_handle_t handle)
 {
+#if 1
+assert(0);
+#else
     TIMERS_INITIALIZE("start","respond");
     bake_eager_read_out_t out;
     out.buffer = NULL;
@@ -1379,6 +1479,7 @@ finish:
     TIMERS_FINALIZE();
     margo_free_input(handle, &in);
     margo_destroy(handle);
+#endif
 }
 DEFINE_MARGO_RPC_HANDLER(bake_eager_read_ult)
 
@@ -1424,6 +1525,9 @@ DEFINE_MARGO_RPC_HANDLER(bake_probe_ult)
 
 static void bake_remove_ult(hg_handle_t handle)
 {
+#if 1
+assert(0);
+#else
     TIMERS_INITIALIZE("start","remove","respond");
     bake_remove_in_t in;
     bake_remove_out_t out;
@@ -1471,11 +1575,15 @@ finish:
     TIMERS_FINALIZE();
     margo_free_input(handle, &in);
     margo_destroy(handle);
+#endif
 }
 DEFINE_MARGO_RPC_HANDLER(bake_remove_ult)
 
 static void bake_migrate_region_ult(hg_handle_t handle)
 {
+#if 1
+assert(0);
+#else
     TIMERS_INITIALIZE("start","bulk_create","forward","remove","respond");
     bake_migrate_region_in_t in;
     in.dest_addr = NULL;
@@ -1612,6 +1720,7 @@ finish:
     margo_addr_free(mid, dest_addr);
     margo_free_input(handle, &in);
     margo_destroy(handle);
+#endif
 }
 DEFINE_MARGO_RPC_HANDLER(bake_migrate_region_ult)
 
@@ -1768,7 +1877,7 @@ static void xfer_ult(void *_args)
     struct xfer_args *args = _args;
     hg_bulk_t local_bulk = HG_BULK_NULL;
     size_t this_size;
-    char *this_local_ptr;
+    off_t this_log_offset;
     void *local_bulk_ptr;
     size_t this_remote_offset;
     size_t tmp_buf_size;
@@ -1788,7 +1897,7 @@ static void xfer_ult(void *_args)
             this_size = args->poolset_max_size;
         else
             this_size = args->bulk_size - args->bytes_issued;
-        this_local_ptr = args->local_ptr + args->bytes_issued;
+        this_log_offset = args->log_offset + args->bytes_issued;
         this_remote_offset = args->remote_offset + args->bytes_issued;
 
         /* update state */
@@ -1822,8 +1931,8 @@ static void xfer_ult(void *_args)
             goto finished;
         }
 
-        /* copy to real destination */
-        memcpy(this_local_ptr, local_bulk_ptr, this_size);
+        /* write to real destination */
+        ret = abt_io_pwrite(args->abtioi, args->log_fd, local_bulk_ptr, PAGE_ROUND_UP(this_size), this_log_offset);
 
         /* let go of bulk handle */
         margo_bulk_poolset_release(args->poolset, local_bulk);
