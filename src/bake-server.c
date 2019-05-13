@@ -1921,6 +1921,11 @@ static void xfer_ult(void *_args)
         /* shouldn't ever fail in this use case */
         assert(ret == 0);
 
+        /* TODO: we need to get aligned buffers out of the margo buffer
+         * pool.  Need a way to specify this.
+         */
+        assert((long unsigned)local_bulk_ptr % 4096 == 0);
+
         /* do the rdma transfer */
         ret = margo_bulk_transfer(args->mid, HG_BULK_PULL,
             args->remote_addr, args->remote_bulk,
