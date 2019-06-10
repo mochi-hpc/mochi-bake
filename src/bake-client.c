@@ -1069,6 +1069,7 @@ int bake_noop(bake_provider_handle_t provider)
     return BAKE_SUCCESS;
 }
 
+#if 0
 static int bake_eager_read(
     bake_provider_handle_t provider,
     bake_region_id_t rid,
@@ -1133,6 +1134,7 @@ finish:
 
     return(ret);
 }
+#endif
 
 int bake_read(
     bake_provider_handle_t provider,
@@ -1149,12 +1151,11 @@ int bake_read(
     bake_read_out_t out;
     int ret;
 
-    /* read not implemented */
-    fprintf(stderr, "Error: bake_read not implemented.\n");
-    return(BAKE_ERR_OP_UNSUPPORTED);
-
+    /* no eager path with file backend */
+#if 0
     if(buf_size <= provider->eager_limit)
         return(bake_eager_read(provider, rid, region_offset, buf, buf_size, bytes_read));
+#endif
 
     TIMERS_INITIALIZE("bulk_create","forward","end");
 

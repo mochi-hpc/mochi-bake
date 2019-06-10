@@ -115,6 +115,7 @@ typedef struct xfer_args {
     int                 ults_active;
     ABT_mutex           mutex;
     ABT_eventual        eventual;
+    int op_flag;
 } xfer_args;
 
 struct bake_provider_conf
@@ -627,8 +628,6 @@ static int transfer_data(
     size_t i;
     off_t log_offset;
 
-    assert(op_flag == TRANSFER_DATA_WRITE);
-
     log_offset = offset;
 
 #ifdef USE_SIZECHECK_HEADERS
@@ -699,6 +698,7 @@ static int transfer_data(
         x_args.poolset = svr_ctx->poolset;
         margo_bulk_poolset_get_max(svr_ctx->poolset, &x_args.poolset_max_size);
         x_args.ret = 0;
+        x_args.op_flag = op_flag;
         ABT_mutex_create(&x_args.mutex);
         ABT_eventual_create(0, &x_args.eventual);
 
@@ -1325,6 +1325,13 @@ static void bake_read_ult(hg_handle_t handle)
 
     entry = find_pmem_entry(svr_ctx, prid->target_id);
     assert(entry);
+
+    /* TODO: need to come back and implement logic to allow reads that don't
+     * start at the beginning of the log entry.  In that case we still have
+     * to do aligned reads anyway, and just rdma the parts that are relevant
+     * to the caller.
+     */
+    assert(in.region_offset == 0);
 
     out.ret = transfer_data(mid, svr_ctx, entry->abtioi, entry->log_fd, prid->offset, in.region_offset, in.bulk_handle, in.bulk_offset,
         in.bulk_size, in.remote_addr_str, hgi->addr, handler_pool, TRANSFER_DATA_WRITE);
@@ -1978,23 +1985,53 @@ static void xfer_ult(void *_args)
         /* shouldn't ever fail in this use case */
         assert(ret == 0);
 
-        /* TODO: we need to get aligned buffers out of the margo buffer
-         * pool.  Need a way to specify this.
+        /* margo pool buffers are supposed to be page aligned already.  Just
+         * safety checking here.
          */
         assert((long unsigned)local_bulk_ptr % 4096 == 0);
 
-        /* do the rdma transfer */
-        ret = margo_bulk_transfer(args->mid, HG_BULK_PULL,
-            args->remote_addr, args->remote_bulk,
-            this_remote_offset, local_bulk, 0, this_size);
-        if(ret != 0 && args->ret == 0)
+        if(args->op_flag == TRANSFER_DATA_WRITE)
         {
-            args->ret = ret;
-            goto finished;
-        }
+            /* do the rdma transfer */
+            ret = margo_bulk_transfer(args->mid, HG_BULK_PULL,
+                args->remote_addr, args->remote_bulk,
+                this_remote_offset, local_bulk, 0, this_size);
+            if(ret != 0 && args->ret == 0)
+            {
+                args->ret = ret;
+                goto finished;
+            }
 
-        /* write to real destination */
-        ret = abt_io_pwrite(args->abtioi, args->log_fd, local_bulk_ptr, PAGE_ROUND_UP(this_size), this_log_offset);
+            /* write to real destination */
+            ret = abt_io_pwrite(args->abtioi, args->log_fd, local_bulk_ptr, PAGE_ROUND_UP(this_size), this_log_offset);
+            if(ret != PAGE_ROUND_UP(this_size) && args->ret == 0)
+            {
+                args->ret = ret;
+                goto finished;
+            }
+        }
+        else if(args->op_flag == TRANSFER_DATA_READ)
+        {
+            /* read from log to intermediate buffer */
+            ret = abt_io_pread(args->abtioi, args->log_fd, local_bulk_ptr, PAGE_ROUND_UP(this_size), this_log_offset);
+            if(ret != PAGE_ROUND_UP(this_size) && args->ret == 0)
+            {
+                args->ret = ret;
+                goto finished;
+            }
+            
+            /* do the rdma transfer */
+            ret = margo_bulk_transfer(args->mid, HG_BULK_PUSH,
+                args->remote_addr, args->remote_bulk,
+                this_remote_offset, local_bulk, 0, this_size);
+            if(ret != 0 && args->ret == 0)
+            {
+                args->ret = ret;
+                goto finished;
+            }
+        }
+        else
+            assert(0);
 
         /* let go of bulk handle */
         margo_bulk_poolset_release(args->poolset, local_bulk);
