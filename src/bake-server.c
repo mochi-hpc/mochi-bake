@@ -141,7 +141,10 @@ static int bake_target_post_migration_callback(remi_fileset_t fileset, void* pro
 
 static void xfer_ult(void *_args);
 
-static int write_transfer_data(
+#define TRANSFER_DATA_READ 1
+#define TRANSFER_DATA_WRITE 2
+
+static int transfer_data(
     margo_instance_id mid, 
     bake_provider_t svr_ctx,
     abt_io_instance_id abtioi,
@@ -153,7 +156,8 @@ static int write_transfer_data(
     uint64_t bulk_size,
     hg_string_t remote_addr_str, 
     hg_addr_t hgi_addr,
-    ABT_pool target_pool);
+    ABT_pool target_pool,
+    int op_flag);
 
 int bake_makepool(
         const char *pool_name,
@@ -600,7 +604,7 @@ finish:
 }
 DEFINE_MARGO_RPC_HANDLER(bake_create_ult)
 
-static int write_transfer_data(
+static int transfer_data(
     margo_instance_id mid, 
     bake_provider_t svr_ctx,
     abt_io_instance_id abtioi,
@@ -612,7 +616,8 @@ static int write_transfer_data(
     uint64_t bulk_size,
     hg_string_t remote_addr_str, 
     hg_addr_t hgi_addr,
-    ABT_pool target_pool)
+    ABT_pool target_pool,
+    int op_flag)
 {
     hg_addr_t src_addr = HG_ADDR_NULL;
     hg_return_t hret;
@@ -621,6 +626,8 @@ static int write_transfer_data(
     struct xfer_args x_args = {0};
     size_t i;
     off_t log_offset;
+
+    assert(op_flag == TRANSFER_DATA_WRITE);
 
     log_offset = offset;
 
@@ -772,8 +779,8 @@ static void bake_write_ult(hg_handle_t handle)
     entry = find_pmem_entry(svr_ctx, prid->target_id);
     assert(entry);
 
-    out.ret = write_transfer_data(mid, svr_ctx, entry->abtioi, entry->log_fd, prid->offset, in.region_offset, in.bulk_handle, in.bulk_offset,
-        in.bulk_size, in.remote_addr_str, hgi->addr, handler_pool);
+    out.ret = transfer_data(mid, svr_ctx, entry->abtioi, entry->log_fd, prid->offset, in.region_offset, in.bulk_handle, in.bulk_offset,
+        in.bulk_size, in.remote_addr_str, hgi->addr, handler_pool, TRANSFER_DATA_WRITE);
     TIMERS_END_STEP(1);
 
 finish:
@@ -1000,8 +1007,8 @@ static void bake_create_write_persist_ult(hg_handle_t handle)
 
     TIMERS_END_STEP(1);
 
-    out.ret = write_transfer_data(mid, svr_ctx, entry->abtioi, entry->log_fd, prid->offset, 0, in.bulk_handle, in.bulk_offset,
-        in.bulk_size, in.remote_addr_str, hgi->addr, handler_pool);
+    out.ret = transfer_data(mid, svr_ctx, entry->abtioi, entry->log_fd, prid->offset, 0, in.bulk_handle, in.bulk_offset,
+        in.bulk_size, in.remote_addr_str, hgi->addr, handler_pool, TRANSFER_DATA_WRITE);
 
     TIMERS_END_STEP(2);
 
@@ -1278,12 +1285,62 @@ DEFINE_MARGO_RPC_HANDLER(bake_noop_ult)
 /* service a remote RPC that reads from a BAKE region */
 static void bake_read_ult(hg_handle_t handle)
 {
-#if 1
-assert(0);
-#else
-    TIMERS_INITIALIZE("start","bulk_create","bulk_xfer","respond");
+    TIMERS_INITIALIZE("start","transfer","respond");
     bake_read_out_t out;
     bake_read_in_t in;
+    margo_instance_id mid;
+    ABT_pool handler_pool;
+    const struct hg_info *hgi;
+    pmemobj_region_id_t* prid;
+    ABT_rwlock lock = ABT_RWLOCK_NULL;
+    bake_pmem_entry_t *entry;
+    hg_return_t hret;
+
+    memset(&out, 0, sizeof(out));
+
+    mid = margo_hg_handle_get_instance(handle);
+    assert(mid);
+    handler_pool = margo_hg_handle_get_handler_pool(handle);
+    hgi = margo_get_info(handle);
+    bake_provider_t svr_ctx = margo_registered_data(mid, hgi->id);
+    if(!svr_ctx) {
+        out.ret = BAKE_ERR_UNKNOWN_PROVIDER;
+        goto finish;
+    }
+
+    hret = margo_get_input(handle, &in);
+    if(hret != HG_SUCCESS)
+    {
+        out.ret = BAKE_ERR_MERCURY;
+        goto finish;
+    }
+
+    /* read-lock the provider */
+    lock = svr_ctx->lock;
+    ABT_rwlock_rdlock(lock);
+
+    prid = (pmemobj_region_id_t*)in.rid.data;
+
+    TIMERS_END_STEP(0);
+
+    entry = find_pmem_entry(svr_ctx, prid->target_id);
+    assert(entry);
+
+    out.ret = transfer_data(mid, svr_ctx, entry->abtioi, entry->log_fd, prid->offset, in.region_offset, in.bulk_handle, in.bulk_offset,
+        in.bulk_size, in.remote_addr_str, hgi->addr, handler_pool, TRANSFER_DATA_WRITE);
+    TIMERS_END_STEP(1);
+
+finish:
+    if(lock != ABT_RWLOCK_NULL)
+        ABT_rwlock_unlock(lock);
+    margo_respond(handle, &out);
+    TIMERS_END_STEP(2);
+    TIMERS_FINALIZE();
+    margo_free_input(handle, &in);
+    margo_destroy(handle);
+    return;
+
+#if 0
     in.remote_addr_str = NULL;
     hg_return_t hret;
     hg_addr_t src_addr = HG_ADDR_NULL;
