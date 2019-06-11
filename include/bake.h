@@ -20,7 +20,7 @@ typedef struct {
 /**
  * Persistent, opaque identifier for a region within a BAKE target.
  */
-#define BAKE_REGION_ID_DATA_SIZE 24
+#define BAKE_REGION_ID_DATA_SIZE 32
 typedef struct {
     uint32_t type;
     char data[BAKE_REGION_ID_DATA_SIZE];
