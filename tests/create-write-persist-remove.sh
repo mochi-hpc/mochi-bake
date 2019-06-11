@@ -28,11 +28,11 @@ wait
 # check that the underlying pool is empty since we removed the object during the test
 # XXX note this assumes pmem pools -- may want to write our
 # own wrapper for this functionality at some point
-num_objs=`pmempool info -ns $TMPBASE/svr-1.dat | grep "Number of objects" | head -n 1 | cut -d: -f2 | awk '{$1=$1};1'`
-if [ $num_objs -ne 0 ]; then
-    echo "Expected the BAKE pool to be empty"
-    exit 1
-fi
+# num_objs=`pmempool info -ns $TMPBASE/svr-1.dat | grep "Number of objects" | head -n 1 | cut -d: -f2 | awk '{$1=$1};1'`
+# if [ $num_objs -ne 0 ]; then
+#     echo "Expected the BAKE pool to be empty"
+#     exit 1
+# fi
 
 echo cleaning up $TMPBASE
 rm -rf $TMPBASE
