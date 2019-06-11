@@ -781,6 +781,13 @@ static void bake_write_ult(hg_handle_t handle)
     entry = find_pmem_entry(svr_ctx, prid->target_id);
     assert(entry);
 
+    /* TODO: need to come back and implement logic to allow writes that don't
+     * start at the beginning of the log entry.  This is trickier than the
+     * read case, because the offset isn't necessarily aligned, and we may
+     * have to do read/modify/writes.
+     */
+    assert(in.region_offset == 0);
+
     out.ret = transfer_data(mid, svr_ctx, entry->abtioi, entry->log_fd, prid->offset, in.region_offset, in.bulk_handle, in.bulk_offset,
         in.bulk_size, in.remote_addr_str, hgi->addr, handler_pool, TRANSFER_DATA_WRITE);
     TIMERS_END_STEP(1);
