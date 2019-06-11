@@ -570,6 +570,10 @@ static void bake_create_ult(hg_handle_t handle)
     
     /* TODO: technically we should persist the log increment somewhere so
      * that this space is still reserved after a restart.
+     *
+     * TODO: one approach would be to write a zero page at the end of the space
+     * reserved by the log increment, or to fallocate to make sure the log
+     * file is at least that big.
      */
     prid->offset = entry->log_offset;
     prid->log_entry_size = content_size;
@@ -1007,6 +1011,10 @@ static void bake_create_write_persist_ult(hg_handle_t handle)
     
     /* TODO: technically we should persist the log increment somewhere so
      * that this space is still reserved after a restart.
+     *
+     * TODO: one approach would be to write a zero page at the end of the space
+     * reserved by the log increment, or to fallocate to make sure the log
+     * file is at least that big.
      */
     prid->offset = entry->log_offset;
     prid->log_entry_size = content_size;
