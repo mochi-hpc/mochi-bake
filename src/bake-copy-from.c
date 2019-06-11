@@ -36,17 +36,21 @@ int main(int argc, char **argv)
     char* local_region;
     int region_fd;
     uint64_t size;
+    uint64_t offset = 0;
     char region_str[128];
  
-    if(argc != 6)
+    if(argc != 6 && argc != 7)
     {
-        fprintf(stderr, "Usage: bake-copy-from <server addr> <mplex id> <identifier file> <output file> <size>\n");
+        fprintf(stderr, "Usage: bake-copy-from <server addr> <mplex id> <identifier file> <output file> <size> [optional_offset]\n");
         fprintf(stderr, "  Example: ./bake-copy-from tcp://localhost:1234 3 /tmp/bb-copy-rid.0GjOlu /tmp/output.dat 256\n");
+        fprintf(stderr, "  NOTE: if optional_offset is specified, then data will be read from that offset within the source region.\n");
         return(-1);
     }
     svr_addr_str = argv[1];
     mplex_id = atoi(argv[2]);
     size = atol(argv[5]);
+    if(argc == 7)
+        offset = atol(argv[6]);
 
     /* initialize Margo using the transport portion of the server
      * address (i.e., the part before the first : character if present)
@@ -177,7 +181,7 @@ int main(int argc, char **argv)
     ret = bake_read(
         bph,
         rid,
-        0,
+        offset,
         local_region,
         size,
         &bytes_read);
