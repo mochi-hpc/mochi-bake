@@ -60,7 +60,7 @@ typedef struct
 {
     bake_target_id_t target_id;
     off_t offset;
-    size_t size;
+    size_t log_entry_size;
 } pmemobj_region_id_t;
 
 typedef struct {
@@ -572,7 +572,7 @@ static void bake_create_ult(hg_handle_t handle)
      * that this space is still reserved after a restart.
      */
     prid->offset = entry->log_offset;
-    prid->size = in.region_size;
+    prid->log_entry_size = content_size;
     prid->target_id = in.bti;
     ABT_mutex_lock(entry->log_offset_mutex);
     entry->log_offset += content_size;
@@ -1002,7 +1002,7 @@ static void bake_create_write_persist_ult(hg_handle_t handle)
      * that this space is still reserved after a restart.
      */
     prid->offset = entry->log_offset;
-    prid->size = in.region_size;
+    prid->log_entry_size = content_size;
     prid->target_id = in.bti;
     ABT_mutex_lock(entry->log_offset_mutex);
     entry->log_offset += content_size;
@@ -1631,7 +1631,7 @@ static void bake_remove_ult(hg_handle_t handle)
     entry = find_pmem_entry(svr_ctx, prid->target_id);
     assert(entry);
 
-    out.ret = abt_io_fallocate(entry->abtioi, entry->log_fd, FALLOC_FL_PUNCH_HOLE|FALLOC_FL_KEEP_SIZE, prid->offset, prid->size);
+    out.ret = abt_io_fallocate(entry->abtioi, entry->log_fd, FALLOC_FL_PUNCH_HOLE|FALLOC_FL_KEEP_SIZE, prid->offset, prid->log_entry_size);
 
     TIMERS_END_STEP(1);
 
