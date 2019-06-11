@@ -1592,9 +1592,60 @@ DEFINE_MARGO_RPC_HANDLER(bake_probe_ult)
 
 static void bake_remove_ult(hg_handle_t handle)
 {
-#if 1
-assert(0);
-#else
+    TIMERS_INITIALIZE("start","remove","respond");
+    bake_remove_in_t in;
+    bake_remove_out_t out;
+    hg_return_t hret;
+    pmemobj_region_id_t* prid;
+    ABT_rwlock lock = ABT_RWLOCK_NULL;
+    margo_instance_id mid;
+    bake_pmem_entry_t *entry;
+    const struct hg_info *hgi;
+
+    memset(&out, 0, sizeof(out));
+
+    mid = margo_hg_handle_get_instance(handle);
+    assert(mid);
+    hgi = margo_get_info(handle);
+    bake_provider_t svr_ctx = margo_registered_data(mid, hgi->id);
+    if(!svr_ctx) {
+        out.ret = BAKE_ERR_UNKNOWN_PROVIDER;
+        goto finish;
+    }
+
+    hret = margo_get_input(handle, &in);
+    if(hret != HG_SUCCESS)
+    {
+        out.ret = BAKE_ERR_MERCURY;
+        goto finish;
+    }
+
+    /* read-lock the provider */
+    lock = svr_ctx->lock;
+    ABT_rwlock_rdlock(lock);
+
+    prid = (pmemobj_region_id_t*)in.rid.data;
+
+    TIMERS_END_STEP(0);
+
+    entry = find_pmem_entry(svr_ctx, prid->target_id);
+    assert(entry);
+
+    out.ret = abt_io_fallocate(entry->abtioi, entry->log_fd, FALLOC_FL_PUNCH_HOLE|FALLOC_FL_KEEP_SIZE, prid->offset, prid->size);
+
+    TIMERS_END_STEP(1);
+
+finish:
+    if(lock != ABT_RWLOCK_NULL)
+        ABT_rwlock_unlock(lock);
+    margo_respond(handle, &out);
+    TIMERS_END_STEP(2);
+    TIMERS_FINALIZE();
+    margo_free_input(handle, &in);
+    margo_destroy(handle);
+    return;
+
+#if 0
     TIMERS_INITIALIZE("start","remove","respond");
     bake_remove_in_t in;
     bake_remove_out_t out;
