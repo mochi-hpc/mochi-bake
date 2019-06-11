@@ -12,7 +12,7 @@ if [ -z "$MKTEMP" ] ; then
     exit 1
 fi
 
-TMPDIR=/dev/shm
+TMPDIR=/tmp
 export TMPDIR
 mkdir -p $TMPDIR
 TMPBASE=$(${MKTEMP} --tmpdir -d test-XXXXXX)
