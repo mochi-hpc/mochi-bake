@@ -1286,10 +1286,6 @@ int bake_remove(
     bake_remove_out_t out;
     int ret;
 
-    /* remove not implemented */
-    fprintf(stderr, "Error: bake_remove not implemented.\n");
-    return(BAKE_ERR_OP_UNSUPPORTED);
-
     in.rid = rid;
 
     hret = margo_create(provider->client->mid, provider->addr,
