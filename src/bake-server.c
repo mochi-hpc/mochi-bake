@@ -13,6 +13,7 @@
 #define _GNU_SOURCE
 
 #define PAGE_ROUND_UP(x) ( (((unsigned long)(x)) + 4095)  & (~(4095)) )
+#define PAGE_ROUND_DOWN(x) ((unsigned long)(x) & (~(4095)))
 
 #include "bake-config.h"
 
