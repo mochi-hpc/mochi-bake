@@ -583,10 +583,10 @@ static void bake_create_ult(hg_handle_t handle)
      * reserved by the log increment, or to fallocate to make sure the log
      * file is at least that big.
      */
-    prid->offset = entry->log_offset;
     prid->log_entry_size = content_size;
     prid->target_id = in.bti;
     ABT_mutex_lock(entry->log_offset_mutex);
+    prid->offset = entry->log_offset;
     entry->log_offset += content_size;
     ABT_mutex_unlock(entry->log_offset_mutex);
 
