@@ -529,6 +529,8 @@ static void bake_create_ult(hg_handle_t handle)
     hg_return_t hret;
     pmemobj_region_id_t* prid;
     ABT_rwlock lock = ABT_RWLOCK_NULL;
+    int ret;
+    char zero_page[4096] = {0};
 
     margo_instance_id mid = margo_hg_handle_get_instance(handle);
     assert(mid);
@@ -576,13 +578,6 @@ static void bake_create_ult(hg_handle_t handle)
      */
     content_size = PAGE_ROUND_UP(content_size);
     
-    /* TODO: technically we should persist the log increment somewhere so
-     * that this space is still reserved after a restart.
-     *
-     * TODO: one approach would be to write a zero page at the end of the space
-     * reserved by the log increment, or to fallocate to make sure the log
-     * file is at least that big.
-     */
     prid->log_entry_size = content_size;
     prid->target_id = in.bti;
     ABT_mutex_lock(entry->log_offset_mutex);
@@ -591,6 +586,23 @@ static void bake_create_ult(hg_handle_t handle)
     ABT_mutex_unlock(entry->log_offset_mutex);
 
     TIMERS_END_STEP(1);
+
+    /* We write one empty page at the end of the log extent covered by this
+     * region.  The goal is to extend the log file length (if
+     * necessary) so that if the daemon crashes and restarts it will begin
+     * allocating at the correct offset rather than possibly reusing space
+     * that was promised to a previous region.
+     *
+     * Ideally this would just be a metadata update to the file system since
+     * we don't care about data contents in this range, but it's not clear
+     * that there is an fallocate() variant that will extend the file size
+     * without allocating blocks.
+     *
+     * We write a full page to make sure it will work with O_DIRECT.
+     */
+    ret = abt_io_pwrite(entry->abtioi, entry->log_fd, zero_page, 4096, prid->offset-4096);
+    if(ret != 4096)
+        out.ret = BAKE_ERR_IO;
 
 #ifdef USE_SIZECHECK_HEADERS
     region_content_t* region = (region_content_t*)pmemobj_direct(prid->oid);
