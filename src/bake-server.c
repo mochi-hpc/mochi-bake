@@ -103,12 +103,12 @@ typedef struct xfer_args {
     hg_addr_t           remote_addr;    // remote address
     hg_bulk_t           remote_bulk;    // remote bulk handle for transfers
     size_t              remote_offset;  // remote offset at which to take the data
-    size_t              bulk_size;
     abt_io_instance_id  abtioi;
     int                 log_fd;
     off_t               log_offset;
     size_t              bytes_issued;
     size_t              bytes_retired;
+    size_t              total_to_transfer;
     margo_bulk_poolset_t poolset;
     size_t              poolset_max_size;
     int32_t             ret;            // return value of the xfer_ult function
@@ -150,8 +150,8 @@ static int transfer_data(
     margo_instance_id mid, 
     bake_provider_t svr_ctx,
     abt_io_instance_id abtioi,
-    int fd,
-    off_t offset,
+    int log_fd,
+    off_t log_offset,
     uint64_t region_offset, 
     hg_bulk_t remote_bulk,
     uint64_t remote_bulk_offset,
@@ -615,8 +615,8 @@ static int transfer_data(
     margo_instance_id mid, 
     bake_provider_t svr_ctx,
     abt_io_instance_id abtioi,
-    int fd,
-    off_t offset,
+    int log_fd,
+    off_t log_offset,
     uint64_t region_offset, 
     hg_bulk_t remote_bulk,
     uint64_t remote_bulk_offset,
@@ -632,9 +632,6 @@ static int transfer_data(
     int ret = 0;
     struct xfer_args x_args = {0};
     size_t i;
-    off_t log_offset;
-
-    log_offset = offset;
 
 #ifdef USE_SIZECHECK_HEADERS
     assert(0);
@@ -642,6 +639,16 @@ static int transfer_data(
         return(BAKE_ERR_OUT_OF_BOUNDS);
 #endif
 
+    /* TODO: implement this.  For reads we need to skip reads until we get
+     * to an overlapping pipeline chunk, then just transmit the required
+     * portions.  Writes are going to be similar, but with the added
+     * complexity of a r/m/w to modify unaligned data.
+     *
+     * TODO: calculate actual size to transfer (bulk size - bulk offset),
+     * round down log offset to nearest page boundary, track page offset for
+     * first transfer, and if not zero issue one extra read at the end.
+     */
+    assert(region_offset == 0);
     log_offset += region_offset;
 
     /* resolve addr, could be addr of rpc sender (normal case) or a third
@@ -695,10 +702,10 @@ static int transfer_data(
         x_args.remote_addr = src_addr;
         x_args.remote_bulk = remote_bulk;
         x_args.remote_offset = remote_bulk_offset;
-        x_args.bulk_size = bulk_size;
+        x_args.total_to_transfer = bulk_size - remote_bulk_offset;
         x_args.abtioi = abtioi;
-        x_args.log_fd = fd;
-        x_args.log_offset = offset;
+        x_args.log_fd = log_fd;
+        x_args.log_offset = log_offset;
         x_args.bytes_issued = 0;
         x_args.bytes_retired = 0;
         x_args.poolset = svr_ctx->poolset;
@@ -708,11 +715,11 @@ static int transfer_data(
         ABT_mutex_create(&x_args.mutex);
         ABT_eventual_create(0, &x_args.eventual);
 
-        for(i=0; i<bulk_size; i+= x_args.poolset_max_size)
+        for(i=0; i<x_args.total_to_transfer; i+= x_args.poolset_max_size)
             x_args.ults_active++;
 
         /* issue one ult per pipeline chunk */
-        for(i=0; i<bulk_size; i+= x_args.poolset_max_size)
+        for(i=0; i<x_args.total_to_transfer; i+= x_args.poolset_max_size)
         {
             /* note: setting output tid to NULL to ignore; we will let
              * threads clean up themselves, with the last one setting an
@@ -784,13 +791,6 @@ static void bake_write_ult(hg_handle_t handle)
 
     entry = find_pmem_entry(svr_ctx, prid->target_id);
     assert(entry);
-
-    /* TODO: need to come back and implement logic to allow writes that don't
-     * start at the beginning of the log entry.  This is trickier than the
-     * read case, because the offset isn't necessarily aligned, and we may
-     * have to do read/modify/writes.
-     */
-    assert(in.region_offset == 0);
 
     out.ret = transfer_data(mid, svr_ctx, entry->abtioi, entry->log_fd, prid->offset, in.region_offset, in.bulk_handle, in.bulk_offset,
         in.bulk_size, in.remote_addr_str, hgi->addr, handler_pool, TRANSFER_DATA_WRITE);
@@ -1343,13 +1343,6 @@ static void bake_read_ult(hg_handle_t handle)
 
     entry = find_pmem_entry(svr_ctx, prid->target_id);
     assert(entry);
-
-    /* TODO: need to come back and implement logic to allow reads that don't
-     * start at the beginning of the log entry.  In that case we still have
-     * to do aligned reads anyway, and just rdma the parts that are relevant
-     * to the caller.
-     */
-    assert(in.region_offset == 0);
 
     out.ret = transfer_data(mid, svr_ctx, entry->abtioi, entry->log_fd, prid->offset, in.region_offset, in.bulk_handle, in.bulk_offset,
         in.bulk_size, in.remote_addr_str, hgi->addr, handler_pool, TRANSFER_DATA_READ);
@@ -2023,13 +2016,13 @@ static void xfer_ult(void *_args)
      * start running.  We don't care which ULT does the next chunk.
      */
     ABT_mutex_lock(args->mutex);
-    while(args->bytes_issued < args->bulk_size && !args->ret)
+    while(args->bytes_issued < args->total_to_transfer && !args->ret)
     {
         /* calculate what work we will do in this cycle */
-        if((args->bulk_size - args->bytes_issued) > args->poolset_max_size)
+        if((args->total_to_transfer - args->bytes_issued) > args->poolset_max_size)
             this_size = args->poolset_max_size;
         else
-            this_size = args->bulk_size - args->bytes_issued;
+            this_size = args->total_to_transfer - args->bytes_issued;
         this_log_offset = args->log_offset + args->bytes_issued;
         this_remote_offset = args->remote_offset + args->bytes_issued;
 
