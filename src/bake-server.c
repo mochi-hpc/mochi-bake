@@ -105,11 +105,18 @@ typedef struct xfer_args {
     hg_bulk_t           remote_bulk;    // remote bulk handle for transfers
     size_t              remote_offset;  // remote offset at which to take the data
     abt_io_instance_id  abtioi;
+    /* state of region to be accessed in local log */
     int                 log_fd;
     off_t               log_offset;
-    size_t              bytes_issued;
-    size_t              bytes_retired;
-    size_t              total_to_transfer;
+    size_t              log_size;
+    size_t              log_issued;
+    size_t              log_retired;
+    /* state of data to actually transfer (may differ from above because of
+     * alignment
+     */
+    size_t              transmit_size;
+    off_t               transmit_offset_in_log;
+    size_t              transmit_issued;
     margo_bulk_poolset_t poolset;
     size_t              poolset_max_size;
     int32_t             ret;            // return value of the xfer_ult function
@@ -640,17 +647,11 @@ static int transfer_data(
         return(BAKE_ERR_OUT_OF_BOUNDS);
 #endif
 
-    /* TODO: implement this.  For reads we need to skip reads until we get
-     * to an overlapping pipeline chunk, then just transmit the required
-     * portions.  Writes are going to be similar, but with the added
-     * complexity of a r/m/w to modify unaligned data.
-     *
-     * TODO: calculate actual size to transfer (bulk size - bulk offset),
-     * round down log offset to nearest page boundary, track page offset for
-     * first transfer, and if not zero issue one extra read at the end.
+    /* TODO: implement this.  For now we handle partial reads, but not
+     * partial writes.  Partial writes will require a r/m/w subroutine to
+     * handle unaligned segments.
      */
-    assert(region_offset == 0);
-    log_offset += region_offset;
+    assert(op_flag == TRANSFER_DATA_READ || region_offset == 0);
 
     /* resolve addr, could be addr of rpc sender (normal case) or a third
      * party (proxy write)
@@ -696,6 +697,8 @@ static int transfer_data(
         }
 #endif
     } else { 
+        off_t log_end_offset = log_offset + region_offset + bulk_size - remote_bulk_offset;
+        log_end_offset = PAGE_ROUND_UP(log_end_offset);
         
         /* pipelining mode, with intermediate buffers */
 
@@ -703,12 +706,24 @@ static int transfer_data(
         x_args.remote_addr = src_addr;
         x_args.remote_bulk = remote_bulk;
         x_args.remote_offset = remote_bulk_offset;
-        x_args.total_to_transfer = bulk_size - remote_bulk_offset;
-        x_args.abtioi = abtioi;
+
+        /* we may access more of the log than is strictly necessary in 
+         * order to account for page alignment
+         */
         x_args.log_fd = log_fd;
-        x_args.log_offset = log_offset;
-        x_args.bytes_issued = 0;
-        x_args.bytes_retired = 0;
+        x_args.log_offset = PAGE_ROUND_DOWN(log_offset + region_offset);
+        x_args.log_size = log_end_offset - log_offset;
+        x_args.log_issued = 0;
+        x_args.log_retired = 0;
+
+        /* this is tracking state of RDMA transfers, which may be different
+         * than log accesses because of alignment adjustments
+         */
+        x_args.transmit_size = bulk_size - remote_bulk_offset;
+        x_args.transmit_offset_in_log = (log_offset + region_offset) - x_args.log_offset;
+        x_args.transmit_issued = 0;
+
+        x_args.abtioi = abtioi;
         x_args.poolset = svr_ctx->poolset;
         margo_bulk_poolset_get_max(svr_ctx->poolset, &x_args.poolset_max_size);
         x_args.ret = 0;
@@ -716,11 +731,11 @@ static int transfer_data(
         ABT_mutex_create(&x_args.mutex);
         ABT_eventual_create(0, &x_args.eventual);
 
-        for(i=0; i<x_args.total_to_transfer; i+= x_args.poolset_max_size)
+        for(i=0; i<x_args.log_size; i+= x_args.poolset_max_size)
             x_args.ults_active++;
 
         /* issue one ult per pipeline chunk */
-        for(i=0; i<x_args.total_to_transfer; i+= x_args.poolset_max_size)
+        for(i=0; i<x_args.log_size; i+= x_args.poolset_max_size)
         {
             /* note: setting output tid to NULL to ignore; we will let
              * threads clean up themselves, with the last one setting an
@@ -2003,8 +2018,10 @@ static void xfer_ult(void *_args)
 {
     struct xfer_args *args = _args;
     hg_bulk_t local_bulk = HG_BULK_NULL;
-    size_t this_size;
+    size_t this_log_size;
+    size_t this_transmit_size;
     off_t this_log_offset;
+    off_t this_transmit_offset_in_log = 0;
     void *local_bulk_ptr;
     size_t this_remote_offset;
     size_t tmp_buf_size;
@@ -2017,24 +2034,41 @@ static void xfer_ult(void *_args)
      * start running.  We don't care which ULT does the next chunk.
      */
     ABT_mutex_lock(args->mutex);
-    while(args->bytes_issued < args->total_to_transfer && !args->ret)
+    while(args->log_issued < args->log_size && !args->ret)
     {
+        /* NOTE: the log access controls the loop logic; the bulk transfers
+         * just filter out the required data
+         */
+
         /* calculate what work we will do in this cycle */
-        if((args->total_to_transfer - args->bytes_issued) > args->poolset_max_size)
-            this_size = args->poolset_max_size;
+        if((args->log_size - args->log_issued) > args->poolset_max_size)
+            this_log_size = args->poolset_max_size;
         else
-            this_size = args->total_to_transfer - args->bytes_issued;
-        this_log_offset = args->log_offset + args->bytes_issued;
-        this_remote_offset = args->remote_offset + args->bytes_issued;
+            this_log_size = args->log_size - args->log_issued;
+        this_log_offset = args->log_offset + args->log_issued;
+        this_remote_offset = args->remote_offset + args->transmit_issued;
+        this_transmit_size = this_log_size;
+        if(args->transmit_issued == 0)
+        {
+            this_transmit_size -= args->transmit_offset_in_log;
+            this_transmit_offset_in_log = args->transmit_offset_in_log;
+        }
+        else
+        {
+            this_transmit_offset_in_log = 0;
+        }
+        if((this_transmit_size + args->transmit_issued) > args->transmit_size)
+            this_transmit_size = args->transmit_size - args->transmit_issued;
 
         /* update state */
-        args->bytes_issued += this_size;
+        args->log_issued += this_log_size;
+        args->transmit_issued += this_transmit_size;
 
         /* drop mutex while we work on our local piece */
         ABT_mutex_unlock(args->mutex);
 
         /* get buffer */
-        ret = margo_bulk_poolset_get(args->poolset, this_size, &local_bulk);
+        ret = margo_bulk_poolset_get(args->poolset, this_log_size, &local_bulk);
         if(ret != 0 && args->ret == 0)
         {
             args->ret = ret;
@@ -2043,7 +2077,7 @@ static void xfer_ult(void *_args)
 
         /* find pointer of memory in buffer */
         ret = margo_bulk_access(local_bulk, 0,
-            this_size, HG_BULK_READWRITE, 1,
+            this_log_size, HG_BULK_READWRITE, 1,
             &local_bulk_ptr, &tmp_buf_size, &tmp_count);
         /* shouldn't ever fail in this use case */
         assert(ret == 0);
@@ -2058,7 +2092,7 @@ static void xfer_ult(void *_args)
             /* do the rdma transfer */
             ret = margo_bulk_transfer(args->mid, HG_BULK_PULL,
                 args->remote_addr, args->remote_bulk,
-                this_remote_offset, local_bulk, 0, this_size);
+                this_remote_offset, local_bulk, 0, this_transmit_size);
             if(ret != 0 && args->ret == 0)
             {
                 args->ret = ret;
@@ -2066,8 +2100,9 @@ static void xfer_ult(void *_args)
             }
 
             /* write to real destination */
-            ret = abt_io_pwrite(args->abtioi, args->log_fd, local_bulk_ptr, PAGE_ROUND_UP(this_size), this_log_offset);
-            if(ret != PAGE_ROUND_UP(this_size) && args->ret == 0)
+            /* TODO: handle unaligned access */
+            ret = abt_io_pwrite(args->abtioi, args->log_fd, local_bulk_ptr, this_log_size, this_log_offset);
+            if(ret != this_log_size && args->ret == 0)
             {
                 args->ret = ret;
                 goto finished;
@@ -2076,8 +2111,8 @@ static void xfer_ult(void *_args)
         else if(args->op_flag == TRANSFER_DATA_READ)
         {
             /* read from log to intermediate buffer */
-            ret = abt_io_pread(args->abtioi, args->log_fd, local_bulk_ptr, PAGE_ROUND_UP(this_size), this_log_offset);
-            if(ret != PAGE_ROUND_UP(this_size) && args->ret == 0)
+            ret = abt_io_pread(args->abtioi, args->log_fd, local_bulk_ptr, this_log_size, this_log_offset);
+            if(ret != this_log_size && args->ret == 0)
             {
                 args->ret = ret;
                 goto finished;
@@ -2086,7 +2121,8 @@ static void xfer_ult(void *_args)
             /* do the rdma transfer */
             ret = margo_bulk_transfer(args->mid, HG_BULK_PUSH,
                 args->remote_addr, args->remote_bulk,
-                this_remote_offset, local_bulk, 0, this_size);
+                this_remote_offset, local_bulk, this_transmit_offset_in_log,
+                this_transmit_size);
             if(ret != 0 && args->ret == 0)
             {
                 args->ret = ret;
@@ -2101,7 +2137,7 @@ static void xfer_ult(void *_args)
         local_bulk = HG_BULK_NULL;
 
         ABT_mutex_lock(args->mutex);
-        args->bytes_retired += this_size;
+        args->log_retired += this_log_size;
     }
     
     /* TODO: think about this.  It is tempting to signal caller before all
