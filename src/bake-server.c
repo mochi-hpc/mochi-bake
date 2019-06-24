@@ -1374,6 +1374,7 @@ static void bake_read_ult(hg_handle_t handle)
 
     out.ret = transfer_data(mid, svr_ctx, entry->abtioi, entry->log_fd, prid->offset, in.region_offset, in.bulk_handle, in.bulk_offset,
         in.bulk_size, in.remote_addr_str, hgi->addr, handler_pool, TRANSFER_DATA_READ);
+    out.size = in.bulk_size - in.bulk_offset;
     TIMERS_END_STEP(1);
 
 finish:
