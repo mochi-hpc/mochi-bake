@@ -1,11 +1,10 @@
 #include <assert.h>
+#include "bake-config.h"
 #include "bake.h"
 #include "bake-rpc.h"
 #include "bake-server.h"
 #include "bake-provider.h"
 #include "bake-backend.h"
-
-extern struct bake_provider_conf g_bake_provider_conf;
 
 /* definition of BAKE root data structure (just a uuid for now) */
 typedef struct
@@ -200,7 +199,7 @@ static int write_transfer_data(
     /* resolve addr, could be addr of rpc sender (normal case) or a third
      * party (proxy write)
      */
-    if(g_bake_provider_conf.pipeline_enable == 0)
+    if(provider->config.pipeline_enable == 0)
     {
         /* normal path; no pipeline or intermediate buffers */
 

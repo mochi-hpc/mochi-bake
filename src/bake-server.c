@@ -42,7 +42,7 @@ DECLARE_MARGO_RPC_HANDLER(bake_migrate_region_ult)
 DECLARE_MARGO_RPC_HANDLER(bake_migrate_target_ult)
 
 /* TODO: support different parameters per provider instance */
-struct bake_provider_conf g_bake_provider_conf = 
+struct bake_provider_conf g_default_bake_provider_conf = 
 {
     .pipeline_enable = 0,
     .pipeline_npools = 4,
@@ -93,10 +93,9 @@ int bake_provider_register(
         tmp_provider->handler_pool = abt_pool;
     else {
         margo_get_handler_pool(mid, &(tmp_provider->handler_pool));
-        if(tmp_provider->handler_pool == ABT_POOL_NULL) {
-            fprintf(stderr, "WARNING: provider handler pool is null\n");
-        }
     }
+
+    tmp_provider->config = g_default_bake_provider_conf;
 
     /* Create rwlock */
     ret = ABT_rwlock_create(&(tmp_provider->lock));
@@ -943,17 +942,17 @@ static int set_conf_cb_pipeline_enabled(bake_provider_t provider,
 
     if(first_call) {
 
-        ret = sscanf(value, "%u", &g_bake_provider_conf.pipeline_enable);
+        ret = sscanf(value, "%u", &provider->config.pipeline_enable);
         if(ret != 1)
             return BAKE_ERR_INVALID_ARG;
 
-        if(g_bake_provider_conf.pipeline_enable) {
+        if(provider->config.pipeline_enable) {
             hret = margo_bulk_poolset_create(
                     provider->mid, 
-                    g_bake_provider_conf.pipeline_npools,
-                    g_bake_provider_conf.pipeline_nbuffers_per_pool,
-                    g_bake_provider_conf.pipeline_first_buffer_size,
-                    g_bake_provider_conf.pipeline_multiplier,
+                    provider->config.pipeline_npools,
+                    provider->config.pipeline_nbuffers_per_pool,
+                    provider->config.pipeline_first_buffer_size,
+                    provider->config.pipeline_multiplier,
                     HG_BULK_READWRITE,
                     &(provider->poolset));
             if(hret != 0)
