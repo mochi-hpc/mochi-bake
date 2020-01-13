@@ -33,7 +33,7 @@ fi
 RID2=`echo "$CPOUT" | grep -o -P '/tmp.*$'`
 
 # Reading from provider 1
-run_to 10 src/bake-copy-from $svr1 1 $RID1 $TMPBASE/foo1-out.dat 27
+run_to 10 src/bake-copy-from $svr1 1 $RID1 $TMPBASE/foo1-out.dat 28
 if [ $? -ne 0 ]; then
     run_to 10 src/bake-shutdown $svr1
     wait
@@ -44,7 +44,7 @@ cat $TMPBASE/foo1-out.dat
 sleep 1
 
 # Reading from provider 2 
-run_to 10 src/bake-copy-from $svr1 2 $RID2 $TMPBASE/foo2-out.dat 28
+run_to 10 src/bake-copy-from $svr1 2 $RID2 $TMPBASE/foo2-out.dat 29
 if [ $? -ne 0 ]; then
     run_to 10 src/bake-shutdown $svr1
     wait

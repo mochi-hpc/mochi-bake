@@ -21,7 +21,7 @@ if [ $? -ne 0 ]; then
 fi
 
 RID=`echo "$CPOUT" | grep -o -P '/tmp.*$'`
-run_to 10 src/bake-copy-from $svr1 1 $RID $TMPBASE/foo-out.dat 12
+run_to 10 src/bake-copy-from $svr1 1 $RID $TMPBASE/foo-out.dat 13
 if [ $? -ne 0 ]; then
     run_to 10 src/bake-shutdown $svr1
     wait
