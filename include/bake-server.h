@@ -19,7 +19,7 @@ extern "C" {
 #define BAKE_PROVIDER_ID_DEFAULT 0
 #define BAKE_PROVIDER_IGNORE NULL
 
-typedef struct bake_server_context_t* bake_provider_t;
+typedef struct bake_provider* bake_provider_t;
 
 /**
  * Creates a BAKE pool to use for backend PMEM storage.
@@ -147,6 +147,22 @@ int bake_provider_set_conf(
         bake_provider_t provider,
         const char *key,
         const char *value);
+
+/**
+ * @brief Set configuration parameters for a target.
+ *
+ * @param provider Bake provider
+ * @param tid Bake target id
+ * @param key Configuration key
+ * @param value Configuration value
+ *
+ * @return 0 on success, -1 on failure
+ */
+int bake_target_set_conf(
+        bake_provider_t provider,
+        bake_target_id_t tid,
+        const char* key,
+        const char* value);
 
 #ifdef __cplusplus
 }

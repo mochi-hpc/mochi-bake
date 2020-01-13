@@ -31,6 +31,7 @@ int main(int argc, char **argv)
     uint8_t mplex_id;
     hg_return_t hret;
     int ret;
+    bake_target_id_t tid;
     bake_region_id_t rid;
     int fd;
     char* local_region;
@@ -99,6 +100,18 @@ int main(int argc, char **argv)
         return(-1);
     }
 
+    ret = read(region_fd, &tid, sizeof(tid));
+    if(ret != sizeof(tid))
+    {
+        perror("read");
+        close(region_fd);
+        bake_provider_handle_release(bph);
+        margo_addr_free(mid, svr_addr);
+        bake_client_finalize(bcl);
+        margo_finalize(mid);
+        return(-1);
+    }
+
     ret = read(region_fd, &rid, sizeof(rid));
     if(ret != sizeof(rid))
     {
@@ -117,7 +130,7 @@ int main(int argc, char **argv)
 
 #ifdef USE_SIZECHECK_HEADERS
     uint64_t check_size;
-    ret = bake_get_size(bph, rid, &check_size);
+    ret = bake_get_size(bph, tid, rid, &check_size);
     if(ret != 0)
     {
         bake_perror("Error: bake_get_size()", ret);
@@ -176,6 +189,7 @@ int main(int argc, char **argv)
     uint64_t bytes_read;
     ret = bake_read(
         bph,
+        tid,
         rid,
         0,
         local_region,

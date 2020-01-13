@@ -27,6 +27,7 @@ MERCURY_GEN_PROC(bake_create_out_t,
 
 /* BAKE write */
 MERCURY_GEN_PROC(bake_write_in_t,
+    ((bake_target_id_t)(bti))\
     ((bake_region_id_t)(rid))\
     ((uint64_t)(region_offset))\
     ((hg_bulk_t)(bulk_handle))\
@@ -39,6 +40,7 @@ MERCURY_GEN_PROC(bake_write_out_t,
 /* BAKE eager write */
 typedef struct 
 {
+    bake_target_id_t bti;
     bake_region_id_t rid;
     uint64_t region_offset;
     uint64_t size;
@@ -50,6 +52,7 @@ MERCURY_GEN_PROC(bake_eager_write_out_t,
 
 /* BAKE persist */
 MERCURY_GEN_PROC(bake_persist_in_t,
+    ((bake_target_id_t)(bti))\
     ((bake_region_id_t)(rid))\
     ((uint64_t)(offset))\
     ((uint64_t)(size)))
@@ -82,6 +85,7 @@ MERCURY_GEN_PROC(bake_eager_create_write_persist_out_t,
 
 /* BAKE get size */
 MERCURY_GEN_PROC(bake_get_size_in_t,
+    ((bake_target_id_t)(bti))\
     ((bake_region_id_t)(rid)))
 MERCURY_GEN_PROC(bake_get_size_out_t,
     ((int32_t)(ret))\
@@ -89,6 +93,7 @@ MERCURY_GEN_PROC(bake_get_size_out_t,
 
 /* BAKE get data */
 MERCURY_GEN_PROC(bake_get_data_in_t,
+    ((bake_target_id_t)(bti))\
     ((bake_region_id_t)(rid)))
 MERCURY_GEN_PROC(bake_get_data_out_t,
     ((int32_t)(ret))\
@@ -96,6 +101,7 @@ MERCURY_GEN_PROC(bake_get_data_out_t,
 
 /* BAKE read */
 MERCURY_GEN_PROC(bake_read_in_t,
+    ((bake_target_id_t)(bti))\
     ((bake_region_id_t)(rid))\
     ((uint64_t)(region_offset))\
     ((hg_bulk_t)(bulk_handle))\
@@ -108,13 +114,14 @@ MERCURY_GEN_PROC(bake_read_out_t,
 
 /* BAKE eager read */
 MERCURY_GEN_PROC(bake_eager_read_in_t,
+    ((bake_target_id_t)(bti))\
     ((bake_region_id_t)(rid))\
     ((uint64_t)(region_offset))\
-    ((uint32_t)(size)))
+    ((uint64_t)(size)))
 typedef struct 
 {
     int32_t ret;
-    uint32_t size;
+    uint64_t size;
     char * buffer;
 } bake_eager_read_out_t;
 static inline hg_return_t hg_proc_bake_eager_read_out_t(hg_proc_t proc, void *v_out_p);
@@ -131,12 +138,14 @@ typedef struct
 
 /* BAKE remove */
 MERCURY_GEN_PROC(bake_remove_in_t,
+    ((bake_target_id_t)(bti))\
     ((bake_region_id_t)(rid)))
 MERCURY_GEN_PROC(bake_remove_out_t,
     ((int32_t)(ret)))
 
 /* BAKE migrate region */
 MERCURY_GEN_PROC(bake_migrate_region_in_t,
+    ((bake_target_id_t)(bti))\
     ((bake_region_id_t)(source_rid))\
     ((uint64_t)(region_size))\
     ((int32_t)(remove_src))\
@@ -186,6 +195,7 @@ static inline hg_return_t hg_proc_bake_eager_write_in_t(hg_proc_t proc, void *v_
     bake_eager_write_in_t *in = v_out_p;
     void *buf = NULL;
 
+    hg_proc_bake_target_id_t(proc, &in->bti);
     hg_proc_bake_region_id_t(proc, &in->rid);
     hg_proc_uint64_t(proc, &in->region_offset);
     hg_proc_uint64_t(proc, &in->size);

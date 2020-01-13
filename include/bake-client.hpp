@@ -135,7 +135,7 @@ class client {
      */
     region create(
             const provider_handle& ph,
-            const target& tgt,
+            const target& tid,
             uint64_t region_size) const;
 
     /**
@@ -145,6 +145,7 @@ class client {
      * if the access gets past the region extents.
      *
      * @param ph Provider handle.
+     * @param tid Target to write to.
      * @param rid Region to write to.
      * @param region_offset Offset in the region at which to start.
      * @param buf Buffer with the data to write.
@@ -152,6 +153,7 @@ class client {
      */
     void write(
             const provider_handle& ph,
+            const target& tid,
             const region& rid,
             uint64_t region_offset,
             void const *buf,
@@ -162,6 +164,7 @@ class client {
      * (equivalent to bake_proxy_write).
      *
      * @param ph Provider handle.
+     * @param tid Target to write to.
      * @param rid Region to write to.
      * @param region_offset Offset in the region.
      * @param remote_bulk Bulk handle to pull the data from.
@@ -174,6 +177,7 @@ class client {
      */
     void write(
             const provider_handle& ph,
+            const target& tid,
             const region& rid,
             uint64_t region_offset,
             hg_bulk_t remote_bulk,
@@ -185,12 +189,14 @@ class client {
      * @brief Persist a segment of a given region.
      *
      * @param ph Provider handle.
+     * @param tid Target.
      * @param rid Region.
      * @param offset Offset.
      * @param size Size.
      */
     void persist(
             const provider_handle& ph,
+            const target& tid,
             const region& rid,
             uint64_t offset,
             size_t size) const;
@@ -238,12 +244,14 @@ class client {
      * to rely on this mechanism to track the size of regions.
      *
      * @param ph Provider handle.
+     * @param tid Target.
      * @param rid Region.
      *
      * @return Size of the region.
      */
     size_t get_size(
             const provider_handle& ph,
+            const target& tid,
             const region& rid) const;
 
     /**
@@ -251,18 +259,21 @@ class client {
      * this call can be used to translate a region id into an actual pointer.
      *
      * @param ph Provider handle.
+     * @param tid Target.
      * @param rid Region.
      *
      * @return A pointer to the actual memory pointed by the region.
      */
     void* get_data(
             const provider_handle& ph,
+            const target& tid,
             const region& rid) const;
 
     /**
      * @brief Reads the provided region at a given offset.
      *
      * @param ph Provider handle.
+     * @param tid Target to read from.
      * @param rid Region to read from.
      * @param region_offset Offset in the region.
      * @param buffer Buffer where to place the read data.
@@ -272,6 +283,7 @@ class client {
      */
     size_t read(
             const provider_handle& ph,
+            const target& tid,
             const region& rid,
             uint64_t region_offset,
             void* buffer,
@@ -281,6 +293,7 @@ class client {
      * @brief Reads a given region and pushed the data into a bulk handle.
      *
      * @param ph Provider handle.
+     * @param tid Target to read from.
      * @param rid Region id.
      * @param region_offset Offset in the region at which to read.
      * @param remote_bulk Bulk handle to which to push the data.
@@ -292,6 +305,7 @@ class client {
      */
     size_t read(
             const provider_handle& ph,
+            const target& tid,
             const region& rid,
             uint64_t region_offset,
             hg_bulk_t remote_bulk,
@@ -303,16 +317,19 @@ class client {
      * @brief Removes the region from its target.
      *
      * @param ph Provider handle.
+     * @param tid Target containing the region to remove.
      * @param rid Region to remove.
      */
     void remove(
             const provider_handle& ph,
+            const target& tid,
             const region& rid) const;
 
     /**
      * @brief Migrate a region from a target to another.
      *
      * @param soure Source provider.
+     * @param source_tid Source target.
      * @param source_rid Source region.
      * @param region_size Region size.
      * @param remove_source Whether to remove the source region.
@@ -324,6 +341,7 @@ class client {
      */
     region migrate(
             const provider_handle& soure,
+            const target& source_tid,
             const region& source_rid,
             size_t region_size,
             bool remove_source,
@@ -515,16 +533,18 @@ inline region client::create(
 
 inline void client::write(
             const provider_handle& ph,
+            const target& tid,
             const region& rid,
             uint64_t region_offset,
             void const *buf,
             uint64_t buf_size) const {
-    int ret = bake_write(ph.m_ph, rid.m_rid, region_offset, buf, buf_size);
+    int ret = bake_write(ph.m_ph, tid.m_tid, rid.m_rid, region_offset, buf, buf_size);
     _CHECK_RET(ret);
 }
 
 inline void client::write(
             const provider_handle& ph,
+            const target& tid,
             const region& rid,
             uint64_t region_offset,
             hg_bulk_t remote_bulk,
@@ -533,6 +553,7 @@ inline void client::write(
             uint64_t size) const {
     int ret = bake_proxy_write(
             ph.m_ph,
+            tid.m_tid,
             rid.m_rid,
             region_offset,
             remote_bulk,
@@ -544,11 +565,13 @@ inline void client::write(
 
 inline void client::persist(
             const provider_handle& ph,
+            const target& tid,
             const region& rid,
             uint64_t offset,
             size_t size) const {
     int ret = bake_persist(
             ph.m_ph,
+            tid.m_tid,
             rid.m_rid,
             offset,
             size);
@@ -593,24 +616,27 @@ inline region client::create_write_persist(
 
 inline size_t client::get_size(
             const provider_handle& ph,
+            const target& tid,
             const region& rid) const {
     size_t size;
-    int ret = bake_get_size(ph.m_ph, rid.m_rid, &size);
+    int ret = bake_get_size(ph.m_ph, tid.m_tid, rid.m_rid, &size);
     _CHECK_RET(ret);
     return size;
 }
 
 inline void* client::get_data(
             const provider_handle& ph,
+            const target& tid,
             const region& rid) const {
     void* ptr;
-    int ret = bake_get_data(ph.m_ph, rid.m_rid, &ptr);
+    int ret = bake_get_data(ph.m_ph, tid.m_tid, rid.m_rid, &ptr);
     _CHECK_RET(ret);
     return ptr;
 }
 
 inline size_t client::read(
             const provider_handle& ph,
+            const target& tid,
             const region& rid,
             uint64_t region_offset,
             void* buffer,
@@ -618,6 +644,7 @@ inline size_t client::read(
     size_t bytes_read;
     int ret = bake_read(
             ph.m_ph,
+            tid.m_tid,
             rid.m_rid,
             region_offset,
             buffer,
@@ -629,6 +656,7 @@ inline size_t client::read(
 
 inline size_t client::read(
             const provider_handle& ph,
+            const target& tid,
             const region& rid,
             uint64_t region_offset,
             hg_bulk_t remote_bulk,
@@ -638,6 +666,7 @@ inline size_t client::read(
     size_t bytes_read;
     int ret = bake_proxy_read(
             ph.m_ph,
+            tid.m_tid,
             rid.m_rid,
             region_offset,
             remote_bulk,
@@ -651,6 +680,7 @@ inline size_t client::read(
 
 inline region client::migrate(
             const provider_handle& source,
+            const target& source_tid,
             const region& source_rid,
             size_t region_size,
             bool remove_source,
@@ -659,6 +689,7 @@ inline region client::migrate(
             const target& dest_tid) const {
     region r;
     int ret = bake_migrate_region(source.m_ph,
+            source_tid.m_tid,
             source_rid.m_rid,
             region_size,
             remove_source,
@@ -689,8 +720,9 @@ inline void client::migrate(
 
 inline void client::remove(
             const provider_handle& ph,
+            const target& tid,
             const region& rid) const {
-    int ret = bake_remove(ph.m_ph, rid.m_rid);
+    int ret = bake_remove(ph.m_ph, tid.m_tid, rid.m_rid);
     _CHECK_RET(ret);
 }
 

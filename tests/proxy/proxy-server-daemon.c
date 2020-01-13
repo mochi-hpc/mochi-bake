@@ -249,12 +249,14 @@ static void proxy_write_ult(hg_handle_t handle)
         assert(ret == 0);
 
         /* perform proxy write on behalf of client */
-        ret = bake_proxy_write(g_proxy_svr_ctx->svr_bph, g_proxy_svr_ctx->the_rid,
+        ret = bake_proxy_write(g_proxy_svr_ctx->svr_bph, 
+            g_proxy_svr_ctx->svr_bti, g_proxy_svr_ctx->the_rid,
             0, in.bulk_handle, in.bulk_offset, in.bulk_addr, in.bulk_size);
         assert(ret == 0);
 
         /* persist the BAKE region */
-        ret = bake_persist(g_proxy_svr_ctx->svr_bph, g_proxy_svr_ctx->the_rid,
+        ret = bake_persist(g_proxy_svr_ctx->svr_bph, 
+                g_proxy_svr_ctx->svr_bti, g_proxy_svr_ctx->the_rid,
                 0, in.bulk_size);
         assert(ret == 0);
     }
@@ -287,7 +289,8 @@ static void proxy_read_ult(hg_handle_t handle)
 
     /* perform proxy write on behalf of client */
     uint64_t bytes_read;
-    ret = bake_proxy_read(g_proxy_svr_ctx->svr_bph, g_proxy_svr_ctx->the_rid,
+    ret = bake_proxy_read(g_proxy_svr_ctx->svr_bph,
+            g_proxy_svr_ctx->svr_bti, g_proxy_svr_ctx->the_rid,
         0, in.bulk_handle, in.bulk_offset, in.bulk_addr, in.bulk_size, &bytes_read);
     assert(ret == 0);
 

@@ -288,6 +288,7 @@ int bake_shutdown_service(bake_client_t client, hg_addr_t addr)
 
 static int bake_eager_write(
     bake_provider_handle_t provider,
+    bake_target_id_t tid,
     bake_region_id_t rid,
     uint64_t region_offset,
     void const *buf,
@@ -300,6 +301,7 @@ static int bake_eager_write(
     bake_eager_write_out_t out;
     int ret;
 
+    in.bti = tid;
     in.rid = rid;
     in.region_offset = region_offset;
     in.size = buf_size;
@@ -345,6 +347,7 @@ finish:
 
 int bake_write(
     bake_provider_handle_t provider,
+    bake_target_id_t tid,
     bake_region_id_t rid,
     uint64_t region_offset,
     void const *buf,
@@ -358,10 +361,11 @@ int bake_write(
     int ret;
 
     if(buf_size <= provider->eager_limit)
-        return(bake_eager_write(provider, rid, region_offset, buf, buf_size));
+        return(bake_eager_write(provider, tid, rid, region_offset, buf, buf_size));
 
     TIMERS_INITIALIZE("bulk_create", "forward", "end");
 
+    in.bti = tid;
     in.rid = rid;
     in.region_offset = region_offset;
     in.bulk_offset = 0;
@@ -419,6 +423,7 @@ finish:
 
 int bake_proxy_write(
     bake_provider_handle_t provider,
+    bake_target_id_t tid,
     bake_region_id_t rid,
     uint64_t region_offset,
     hg_bulk_t remote_bulk,
@@ -433,6 +438,7 @@ int bake_proxy_write(
     bake_write_out_t out;
     int ret;
 
+    in.bti = tid;
     in.rid = rid;
     in.region_offset = region_offset;
     in.bulk_handle = remote_bulk;
@@ -540,6 +546,7 @@ finish:
 
 int bake_persist(
     bake_provider_handle_t provider,
+    bake_target_id_t tid,
     bake_region_id_t rid,
     size_t offset,
     size_t size)
@@ -551,6 +558,7 @@ int bake_persist(
     bake_persist_out_t out;
     int ret;
 
+    in.bti = tid;
     in.rid = rid;
     in.offset = offset;
     in.size = size;
@@ -790,6 +798,7 @@ finish:
 
 int bake_get_size(
     bake_provider_handle_t provider,
+    bake_target_id_t bti,
     bake_region_id_t rid,
     uint64_t *region_size)
 {
@@ -800,6 +809,7 @@ int bake_get_size(
     bake_get_size_out_t out;
     int ret;
 
+    in.bti = bti;
     in.rid = rid;
 
     hret = margo_create(provider->client->mid, provider->addr,
@@ -843,6 +853,7 @@ finish:
 
 int bake_get_data(
     bake_provider_handle_t provider,
+    bake_target_id_t bti,
     bake_region_id_t rid,
     void** ptr)
 {
@@ -881,6 +892,7 @@ int bake_get_data(
     }
     margo_addr_free(provider->client->mid, self_addr);
 
+    in.bti = bti;
     in.rid = rid;
 
     hret = margo_create(provider->client->mid, provider->addr,
@@ -923,6 +935,7 @@ finish:
 
 int bake_migrate_region(
         bake_provider_handle_t source,
+        bake_target_id_t bti,
         bake_region_id_t source_rid,
         size_t region_size,
         int remove_source,
@@ -938,6 +951,7 @@ int bake_migrate_region(
     bake_migrate_region_out_t out;
     int ret;
 
+    in.bti = bti;
     in.source_rid       = source_rid;
     in.region_size      = region_size;
     in.remove_src       = remove_source;
@@ -1066,6 +1080,7 @@ int bake_noop(bake_provider_handle_t provider)
 
 static int bake_eager_read(
     bake_provider_handle_t provider,
+    bake_target_id_t bti,
     bake_region_id_t rid,
     uint64_t region_offset,
     void *buf,
@@ -1081,6 +1096,7 @@ static int bake_eager_read(
     out.size = 0;
     int ret;
 
+    in.bti = bti;
     in.rid = rid;
     in.region_offset = region_offset;
     in.size = buf_size;
@@ -1131,6 +1147,7 @@ finish:
 
 int bake_read(
     bake_provider_handle_t provider,
+    bake_target_id_t bti,
     bake_region_id_t rid,
     uint64_t region_offset,
     void *buf,
@@ -1145,10 +1162,11 @@ int bake_read(
     int ret;
 
     if(buf_size <= provider->eager_limit)
-        return(bake_eager_read(provider, rid, region_offset, buf, buf_size, bytes_read));
+        return(bake_eager_read(provider, bti, rid, region_offset, buf, buf_size, bytes_read));
 
     TIMERS_INITIALIZE("bulk_create","forward","end");
 
+    in.bti = bti;
     in.rid = rid;
     in.region_offset = region_offset;
     in.bulk_offset = 0;
@@ -1204,6 +1222,7 @@ finish:
 
 int bake_proxy_read(
     bake_provider_handle_t provider,
+    bake_target_id_t tid,
     bake_region_id_t rid,
     uint64_t region_offset,
     hg_bulk_t remote_bulk,
@@ -1219,6 +1238,7 @@ int bake_proxy_read(
     bake_read_out_t out;
     int ret;
 
+    in.bti = tid;
     in.rid = rid;
     in.region_offset = region_offset;
     in.bulk_handle = remote_bulk;
@@ -1267,6 +1287,7 @@ finish:
 
 int bake_remove(
     bake_provider_handle_t provider,
+    bake_target_id_t tid,
     bake_region_id_t rid)
 {
     TIMERS_INITIALIZE("start","forward","end");
@@ -1276,6 +1297,7 @@ int bake_remove(
     bake_remove_out_t out;
     int ret;
 
+    in.bti = tid;
     in.rid = rid;
 
     hret = margo_create(provider->client->mid, provider->addr,

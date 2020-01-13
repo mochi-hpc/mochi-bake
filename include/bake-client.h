@@ -156,6 +156,7 @@ int bake_create(
  */
 int bake_write(
         bake_provider_handle_t provider,
+        bake_target_id_t bti,
         bake_region_id_t rid,
         uint64_t region_offset,
         void const *buf,
@@ -181,6 +182,7 @@ int bake_write(
  */
 int bake_proxy_write(
         bake_provider_handle_t provider,
+        bake_target_id_t bti,
         bake_region_id_t rid,
         uint64_t region_offset,
         hg_bulk_t remote_bulk,
@@ -200,6 +202,7 @@ int bake_proxy_write(
  */
 int bake_persist(
         bake_provider_handle_t provider,
+        bake_target_id_t bti,
         bake_region_id_t rid,
         size_t offset,
         size_t size);
@@ -262,6 +265,7 @@ int bake_create_write_persist_proxy(
  */
 int bake_get_size(
         bake_provider_handle_t provider,
+        bake_target_id_t bti,
         bake_region_id_t rid,
         uint64_t *size);
 
@@ -287,6 +291,7 @@ int bake_get_size(
  */
 int bake_get_data(
         bake_provider_handle_t provider,
+        bake_target_id_t bti,
         bake_region_id_t rid,
         void** ptr);
 
@@ -306,6 +311,7 @@ int bake_get_data(
  */
 int bake_read(
         bake_provider_handle_t provider,
+        bake_target_id_t bti,
         bake_region_id_t rid,
         uint64_t region_offset,
         void *buf,
@@ -333,6 +339,7 @@ int bake_read(
  */
 int bake_proxy_read(
         bake_provider_handle_t provider,
+        bake_target_id_t bti,
         bake_region_id_t rid,
         uint64_t region_offset,
         hg_bulk_t remote_bulk,
@@ -361,6 +368,7 @@ int bake_proxy_read(
  */
 int bake_migrate_region(
         bake_provider_handle_t source,
+        bake_target_id_t source_bti,
         bake_region_id_t source_rid,
         size_t region_size,
         int remove_source,
@@ -418,6 +426,7 @@ int bake_noop(bake_provider_handle_t provider);
  */
 int bake_remove(
         bake_provider_handle_t provider,
+        bake_target_id_t bti,
         bake_region_id_t rid);
 
 #ifdef __cplusplus

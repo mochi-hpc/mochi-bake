@@ -122,7 +122,7 @@ int main(int argc, char *argv[])
     memset(buf, 0, buf_size);
 
     uint64_t bytes_read;
-    ret = bake_read(bph, the_rid, 0, buf, buf_size, &bytes_read);
+    ret = bake_read(bph, bti, the_rid, 0, buf, buf_size, &bytes_read);
     if(ret != 0)
     {
         bake_perror( "Error: bake_read()", ret);
