@@ -780,32 +780,15 @@ DEFINE_MARGO_RPC_HANDLER(bake_migrate_region_ult)
 
 static void bake_migrate_target_ult(hg_handle_t handle)
 {
-    bake_migrate_target_in_t in;
+    DECLARE_LOCAL_VARS(migrate_target);
+    int ret;
     in.dest_remi_addr = NULL;
     in.dest_root = NULL;
-    bake_migrate_target_out_t out;
+    FIND_PROVIDER;
+    GET_RPC_INPUT;
     hg_addr_t dest_addr = HG_ADDR_NULL;
-    hg_return_t hret;
-    int ret;
-    ABT_rwlock lock = ABT_RWLOCK_NULL;
 
     memset(&out, 0, sizeof(out));
-
-    margo_instance_id mid = margo_hg_handle_get_instance(handle);
-    assert(mid);
-    const struct hg_info* info = margo_get_info(handle);
-    bake_provider_t provider = margo_registered_data(mid, info->id);
-    if(!provider) {
-        out.ret = BAKE_ERR_UNKNOWN_PROVIDER;
-        goto finish;
-    }
-
-    hret = margo_get_input(handle, &in);
-    if(hret != HG_SUCCESS)
-    {
-        out.ret = BAKE_ERR_MERCURY;
-        goto finish;
-    }
 
 #ifdef USE_REMI
 
@@ -814,11 +797,8 @@ static void bake_migrate_target_ult(hg_handle_t handle)
     /* lock provider */
     lock = provider->lock;
     ABT_rwlock_wrlock(lock);
-    bake_target_t* entry = find_target_entry(provider, in.target_id);
-    if(!entry) {
-        out.ret = BAKE_ERR_UNKNOWN_TARGET;
-        goto finish;
-    }
+
+    FIND_TARGET;
 
     /* lookup the address of the destination REMI provider */
     hret = margo_addr_lookup(mid, in.dest_remi_addr, &dest_addr);
@@ -835,18 +815,21 @@ static void bake_migrate_target_ult(hg_handle_t handle)
         goto finish;
     }
 
-    /* create a fileset */
-    ret = remi_fileset_create("bake", entry->root, &local_fileset);
-    if(ret != REMI_SUCCESS) {
-        out.ret = BAKE_ERR_REMI;
+    /* ask the backend to fill the fileset */
+    out.ret = target->backend->_create_fileset(
+                target->context, &local_fileset);
+    if(out.ret != BAKE_SUCCESS) {
         goto finish;
     }
-    /* fill the fileset */
-    ret = remi_fileset_register_file(local_fileset, entry->filename);
-    if(ret != REMI_SUCCESS) {
-        out.ret = BAKE_ERR_REMI;
+    if(local_fileset == NULL) {
+        out.ret = BAKE_ERR_OP_UNSUPPORTED;
         goto finish;
     }
+
+    remi_fileset_register_metadata(
+                local_fileset,
+                "backend",
+                target->backend->name);
 
     /* issue the migration */
     int status = 0;
@@ -856,8 +839,12 @@ static void bake_migrate_target_ult(hg_handle_t handle)
         goto finish;
     }
 
+    UNLOCK_PROVIDER;
     /* remove the target from the list of managed targets */
-    bake_provider_remove_storage_target(provider, in.target_id);
+    if(in.remove_src) {
+        bake_provider_remove_storage_target(provider, in.bti);
+    }
+    LOCK_PROVIDER;
 
     out.ret = BAKE_SUCCESS;
 
@@ -868,18 +855,13 @@ static void bake_migrate_target_ult(hg_handle_t handle)
 #endif
 
 finish:
-    if(lock != ABT_RWLOCK_NULL)
-        ABT_rwlock_unlock(lock);
+    UNLOCK_PROVIDER;
 #ifdef USE_REMI
     remi_fileset_free(local_fileset);
     remi_provider_handle_release(remi_ph);
 #endif
     margo_addr_free(mid, dest_addr);
-    margo_free_input(handle, &in);
-    margo_respond(handle, &out);
-    margo_destroy(handle);
-
-    return;
+    RESPOND_AND_CLEANUP;
 }
 DEFINE_MARGO_RPC_HANDLER(bake_migrate_target_ult)
 
@@ -928,6 +910,7 @@ static void bake_server_finalize_cb(void *data)
 
 typedef struct migration_cb_args {
     char root[1024];
+    char backend_name[32];
     bake_provider* provider;
 } migration_cb_args;
 
@@ -936,16 +919,27 @@ static void migration_fileset_cb(const char* filename, void* arg)
     migration_cb_args* mig_args = (migration_cb_args*)arg;
     char fullname[1024];
     fullname[0] = '\0';
+    strcat(fullname, mig_args->backend_name);
+    strcat(fullname, ":");
     strcat(fullname, mig_args->root);
     strcat(fullname, filename);
     bake_target_id_t tid;
     bake_provider_add_storage_target(mig_args->provider, fullname, &tid);
 }
 
+static void migration_metadata_cb(const char* key, const char* val, void* arg)
+{
+    migration_cb_args* mig_args = (migration_cb_args*)arg;
+    if(strcmp(key,"backend") == 0) {
+        strncpy(mig_args->backend_name, val, 31);
+    }
+}
+
 static int bake_target_post_migration_callback(remi_fileset_t fileset, void* uarg)
 {
     migration_cb_args args;
     args.provider = (bake_provider *)uarg;
+    remi_fileset_foreach_metadata(fileset, migration_metadata_cb, &args);
     size_t root_size = 1024;
     remi_fileset_get_root(fileset, args.root, &root_size);
     remi_fileset_foreach_file(fileset, migration_fileset_cb, &args);

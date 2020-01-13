@@ -88,17 +88,17 @@ typedef int (*bake_migrate_region_fn)(backend_context_t context,
                                       bake_target_id_t dest_target_id,
                                       bake_region_id_t *dest_rid);
 
-typedef int (*bake_migrate_target_fn)(backend_context_t context,
-                                      int remove_source,
-                                      const char* dest_addr,
-                                      uint16_t dest_provider_id,
-                                      const char* dest_root);
+#ifdef USE_REMI
+typedef int (*bake_create_fileset_fn)(backend_context_t context,
+                                      remi_fileset_t* fileset);
+#endif
 
 typedef int (*bake_set_conf_fn)(backend_context_t context,
                                 const char* key,
                                 const char* value);
 
 typedef struct bake_backend {
+    const char*                       name;
     bake_backend_initialize_fn        _initialize;
     bake_backend_finalize_fn          _finalize;
     bake_create_fn                    _create;
@@ -113,7 +113,9 @@ typedef struct bake_backend {
     bake_get_region_data_fn           _get_region_data;
     bake_remove_fn                    _remove;
     bake_migrate_region_fn            _migrate_region;
-    bake_migrate_target_fn            _migrate_target;
+#ifdef USE_REMI
+    bake_create_fileset_fn            _create_fileset;
+#endif
     bake_set_conf_fn                  _set_conf;
 } bake_backend;
 

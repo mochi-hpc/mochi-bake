@@ -158,7 +158,7 @@ MERCURY_GEN_PROC(bake_migrate_region_out_t,
 
 /* BAKE migrate target */
 MERCURY_GEN_PROC(bake_migrate_target_in_t,
-    ((bake_target_id_t)(target_id))\
+    ((bake_target_id_t)(bti))\
     ((int32_t)(remove_src))\
     ((hg_const_string_t)(dest_remi_addr))\
     ((uint16_t)(dest_remi_provider_id))\

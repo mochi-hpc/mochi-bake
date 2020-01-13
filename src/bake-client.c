@@ -1014,7 +1014,7 @@ int bake_migrate_target(
     bake_migrate_target_out_t out;
     int ret;
 
-    in.target_id        = src_target_id;
+    in.bti              = src_target_id;
     in.remove_src       = remove_source;
     in.dest_remi_addr   = dest_addr;
     in.dest_remi_provider_id = dest_provider_id;

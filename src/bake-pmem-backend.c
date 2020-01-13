@@ -673,14 +673,34 @@ finish:
     return ret;
 }
 
-static int bake_pmem_migrate_target(backend_context_t context,
-                                    int remove_source,
-                                    const char* dest_addr,
-                                    uint16_t dest_provider_id,
-                                    const char* dest_root)
+#ifdef USE_REMI
+static int bake_pmem_create_fileset(backend_context_t context,
+                                  remi_fileset_t* fileset)
 {
+    bake_pmem_entry_t *entry = (bake_pmem_entry_t*)context;
+    int ret;
+    /* create a fileset */
+    ret = remi_fileset_create("bake", entry->root, fileset);
+    if(ret != REMI_SUCCESS) {
+        ret = BAKE_ERR_REMI;
+        goto error;
+    }
 
+    /* fill the fileset */
+    ret = remi_fileset_register_file(*fileset, entry->filename);
+    if(ret != REMI_SUCCESS) {
+        ret = BAKE_ERR_REMI;
+        goto error;
+    }
+
+finish:
+    return ret;
+error:
+    remi_fileset_free(*fileset);
+    *fileset = NULL;
+    goto finish;
 }
+#endif
 
 static int bake_pmem_set_conf(backend_context_t context,
                               const char* key,
@@ -690,6 +710,7 @@ static int bake_pmem_set_conf(backend_context_t context,
 }
 
 bake_backend g_bake_pmem_backend = {
+    .name                       = "pmem",
     ._initialize                = bake_pmem_backend_initialize,
     ._finalize                  = bake_pmem_backend_finalize,
     ._create                    = bake_pmem_create,
@@ -704,7 +725,9 @@ bake_backend g_bake_pmem_backend = {
     ._get_region_data           = bake_pmem_get_region_data,
     ._remove                    = bake_pmem_remove,
     ._migrate_region            = bake_pmem_migrate_region,
-    ._migrate_target            = bake_pmem_migrate_target,
+#ifdef USE_REMI
+    ._create_fileset            = bake_pmem_create_fileset,
+#endif
     ._set_conf                  = bake_pmem_set_conf
 };
 
