@@ -483,6 +483,7 @@ static void bake_eager_write_ult(hg_handle_t handle)
     FIND_PROVIDER;
     GET_RPC_INPUT;
     LOCK_PROVIDER;
+    FIND_TARGET;
 
     out.ret = target->backend->_write_raw(
                     target->context,
