@@ -39,7 +39,8 @@ typedef struct {
 #define BAKE_ERR_REMI              (-10) /* Error related to REMI */
 #define BAKE_ERR_OP_UNSUPPORTED    (-11) /* Operation not supported */
 #define BAKE_ERR_FORBIDDEN         (-12) /* Forbidden operation */
-#define BAKE_ERR_END               (-13) /* End of valid bake error codes */
+#define BAKE_ERR_BACKEND_TYPE      (-13) /* Unknown backend type */
+#define BAKE_ERR_END               (-14) /* End of valid bake error codes */
 
 /**
  * Print bake errors in human-friendly form

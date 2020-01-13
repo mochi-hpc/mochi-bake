@@ -267,10 +267,31 @@ int bake_provider_add_storage_target(
     int ret = BAKE_SUCCESS;
     bake_target_id_t tid;
     backend_context_t ctx = NULL;
+
+    char* backend_type = NULL;
+    // figure out the backend by searching until the ":" in the target name
+    const char* tmp = strchr(target_name,':');
+    if(tmp != NULL) {
+        backend_type = strdup(target_name);
+        backend_type[(unsigned long)(tmp-target_name)] = '\0';
+        target_name = tmp+1;
+    } else {
+        backend_type = strdup("pmem");
+    }
+
     bake_target_t* new_entry = calloc(1, sizeof(*new_entry));
-    new_entry->backend = &g_bake_pmem_backend; // TODO make that depend on the name
+    
+    if(strcmp(backend_type, "pmem") == 0) {
+        new_entry->backend = &g_bake_pmem_backend;
+    } else {
+        fprintf(stderr, "ERROR: unknown backend type \"%s\"\n", backend_type);
+        free(backend_type);
+        return BAKE_ERR_BACKEND_TYPE;
+    }
+
     ret = new_entry->backend->_initialize(provider, target_name, &tid, &ctx);
     if(ret != 0) {
+        free(backend_type);
         free(new_entry);
         return ret;
     }
@@ -296,6 +317,7 @@ int bake_provider_add_storage_target(
     }
     /* unlock provider */
     ABT_rwlock_unlock(provider->lock);
+    free(backend_type);
     return ret;
 }
 
