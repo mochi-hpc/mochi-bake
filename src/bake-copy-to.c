@@ -45,7 +45,7 @@ int main(int argc, char **argv)
  
     if(argc != 5)
     {
-        fprintf(stderr, "Usage: bake-copy-to <local file> <server addr> <mplex id> <target number>\n");
+        fprintf(stderr, "Usage: bake-copy-to <local file> <server addr> <provider id> <target number>\n");
         fprintf(stderr, "  Example: ./bake-copy-to /tmp/foo.dat tcp://localhost:1234 1 3\n");
         return(-1);
     }
@@ -169,6 +169,7 @@ int main(int argc, char **argv)
     /* transfer data */
     ret = bake_write(
         bph,
+        bti[target_number-1],
         rid,
         0,
         local_region,
@@ -188,7 +189,7 @@ int main(int argc, char **argv)
     munmap(local_region, statbuf.st_size);
     close(fd);
 
-    ret = bake_persist(bph, rid, 0, statbuf.st_size);
+    ret = bake_persist(bph, bti[target_number-1], rid, 0, statbuf.st_size);
     if(ret != 0)
     {
         bake_provider_handle_release(bph);
@@ -201,7 +202,7 @@ int main(int argc, char **argv)
 
 #ifdef USE_SIZECHECK_HEADERS
     /* safety check size */
-    ret = bake_get_size(bph, rid, &check_size);
+    ret = bake_get_size(bph, bti[target_number-1], rid, &check_size);
     if(ret != 0)
     {
         bake_provider_handle_release(bph);
@@ -232,15 +233,19 @@ int main(int argc, char **argv)
     }
     else
     {
-        ret = write(region_fd, &rid, sizeof(rid));
-        if(ret < 0)
-        {
-            perror("write");
-        }
-        else
-        {
-            printf("RID written to %s\n", region_file);
-            close(region_fd);
+        ret = write(region_fd, &bti[target_number-1], sizeof(bti[target_number-1]));
+        if(ret < 0) perror("write");
+        else {
+            ret = write(region_fd, &rid, sizeof(rid));
+            if(ret < 0)
+            {
+                perror("write");
+            }
+            else
+            {
+                printf("RID written to %s\n", region_file);
+                close(region_fd);
+            }
         }
     }
    

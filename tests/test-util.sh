@@ -35,6 +35,7 @@ function test_start_servers ()
     nservers=${1:-4}
     startwait=${2:-15}
     maxtime=${3:-120}
+    backend=${4:-"pmem:"}
 
     # start daemons
     for i in `seq $nservers`
@@ -44,7 +45,7 @@ function test_start_servers ()
             exit 1
         fi
 
-        run_to ${maxtime} src/bake-server-daemon -p -f $TMPBASE/svr-$i.addr na+sm $TMPBASE/svr-$i.dat &
+        run_to ${maxtime} src/bake-server-daemon -p -f $TMPBASE/svr-$i.addr na+sm ${backend}$TMPBASE/svr-$i.dat &
         if [ $? -ne 0 ]; then
             # TODO: this doesn't actually work; can't check return code of
             # something executing in background.  We have to rely on the

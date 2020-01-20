@@ -134,7 +134,7 @@ int main(int argc, char *argv[])
     memset(buf, 0, ALLOC_BUF_SIZE);
 
     uint64_t bytes_read;
-    ret = bake_read(bph, the_rid, 0, buf, buf_size, &bytes_read);
+    ret = bake_read(bph, bti, the_rid, 0, buf, buf_size, &bytes_read);
     if(ret != 0)
     {
         bake_perror( "Error: bake_read()", ret);
@@ -158,7 +158,7 @@ int main(int argc, char *argv[])
         return(-1);
     }
 
-    ret = bake_remove(bph, the_rid);
+    ret = bake_remove(bph, bti, the_rid);
     if (ret != 0)
     {
         bake_perror( "Error: unable to remove the created BAKE region", ret);

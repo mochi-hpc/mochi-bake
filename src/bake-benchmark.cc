@@ -181,7 +181,7 @@ class CreateBenchmark : public AbstractAccessBenchmark {
             auto& _tgt = target();
             auto& _ph = ph();
             for(unsigned i=0; i < m_num_entries; i++) {
-                _clt.remove(_ph, m_region_ids[i]);
+                _clt.remove(_ph, _tgt, m_region_ids[i]);
             }
         }
         m_region_sizes.resize(0); m_region_sizes.shrink_to_fit();
@@ -258,7 +258,7 @@ class CreateWritePersistBenchmark : public AbstractAccessBenchmark {
             auto& _tgt = target();
             auto& _ph = ph();
             for(unsigned i=0; i < m_num_entries; i++) {
-                _clt.remove(_ph, m_region_ids[i]);
+                _clt.remove(_ph, _tgt, m_region_ids[i]);
             }
         }
         if(m_preregister_bulk) margo_bulk_free(m_bulk);
@@ -332,10 +332,10 @@ class WriteBenchmark : public AbstractAccessBenchmark {
         for(unsigned i=0; i < m_num_entries; i++) {
             size_t size = m_access_sizes[i];
             if(m_preregister_bulk) {
-                _clt.write(_ph, m_region_id, region_offset, m_bulk, data_offset, "",  size);
+                _clt.write(_ph, _tgt, m_region_id, region_offset, m_bulk, data_offset, "",  size);
             } else {
                 char* data = m_data.data() + data_offset;
-                _clt.write(_ph, m_region_id, region_offset, (void*)data, size);
+                _clt.write(_ph, _tgt, m_region_id, region_offset, (void*)data, size);
             }
             if(!m_reuse_buffer) data_offset += size;
             if(!m_reuse_region) region_offset += size;
@@ -347,7 +347,7 @@ class WriteBenchmark : public AbstractAccessBenchmark {
             auto& _clt = client();
             auto& _tgt = target();
             auto& _ph = ph();
-            _clt.remove(_ph, m_region_id);
+            _clt.remove(_ph, _tgt, m_region_id);
         }
         m_access_sizes.resize(0); m_access_sizes.shrink_to_fit();
         m_data.resize(0);         m_data.shrink_to_fit();
@@ -424,10 +424,10 @@ class ReadBenchmark : public AbstractAccessBenchmark {
         for(unsigned i=0; i < m_num_entries; i++) {
             size_t size = m_access_sizes[i];
             if(m_preregister_bulk) {
-                _clt.read(_ph, m_region_id, region_offset, m_bulk, data_offset, "",  size);
+                _clt.read(_ph, _tgt, m_region_id, region_offset, m_bulk, data_offset, "",  size);
             } else {
                 char* data = m_read_data.data() + data_offset;
-                _clt.read(_ph, m_region_id, region_offset, (void*)data, size);
+                _clt.read(_ph, _tgt, m_region_id, region_offset, (void*)data, size);
             }
             if(!m_reuse_buffer) data_offset += size;
             if(!m_reuse_region) region_offset += size;
@@ -439,7 +439,7 @@ class ReadBenchmark : public AbstractAccessBenchmark {
             auto& _clt = client();
             auto& _tgt = target();
             auto& _ph = ph();
-            _clt.remove(_ph, m_region_id);
+            _clt.remove(_ph, _tgt, m_region_id);
         }
         m_access_sizes.resize(0); m_access_sizes.shrink_to_fit();
         m_read_data.resize(0);    m_read_data.shrink_to_fit();
@@ -484,7 +484,7 @@ class PersistBenchmark : public AbstractAccessBenchmark {
         }
         for(unsigned i=0; i < m_num_entries; i++) {
             m_region_ids[i] = _clt.create(_ph, _tgt, m_access_sizes[i]);
-            _clt.write(_ph, m_region_ids[i], 0, (void*)write_data.data(), m_access_sizes[i]);
+            _clt.write(_ph, _tgt, m_region_ids[i], 0, (void*)write_data.data(), m_access_sizes[i]);
         }
     }
 
@@ -494,7 +494,7 @@ class PersistBenchmark : public AbstractAccessBenchmark {
         auto& _ph = ph();
         for(unsigned i=0; i < m_num_entries; i++) {
             size_t size = m_access_sizes[i];
-            _clt.persist(_ph, m_region_ids[i], 0, size);
+            _clt.persist(_ph, _tgt, m_region_ids[i], 0, size);
         }
     }
 
@@ -504,7 +504,7 @@ class PersistBenchmark : public AbstractAccessBenchmark {
             auto& _tgt = target();
             auto& _ph = ph();
             for(unsigned i=0; i < m_num_entries; i++) {
-                _clt.remove(_ph, m_region_ids[i]);
+                _clt.remove(_ph, _tgt, m_region_ids[i]);
             }
         }
         m_region_ids.resize(0);   m_region_ids.shrink_to_fit();
