@@ -8,7 +8,6 @@
 #define __BAKE_SERVER_H
 
 #include <margo.h>
-#include <libpmemobj.h>
 #include <bake.h>
 
 #ifdef __cplusplus

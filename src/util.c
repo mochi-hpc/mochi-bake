@@ -8,7 +8,6 @@
 #include "bake.h"
 #include <stdio.h>
 #include <inttypes.h>
-#include <libpmemobj.h>
 
 static char * bake_err_str(int ret)
 {
@@ -71,12 +70,15 @@ void bake_perror(char *s, int err)
 
 void bake_print_dbg_region_id_t(char *str, size_t size, bake_region_id_t rid)
 {
+#if 1
+    snprintf( str, size, "UNKNOWN");
+#else
     PMEMoid *oid;
 
     /* NOTE: this is fragile.  Would break if pmemobj format changes. */
     oid = (PMEMoid *)rid.data;
 
     snprintf(str, size, "%u:%" PRIu64 ":%" PRIu64, rid.type, oid->pool_uuid_lo, oid->off);
-
+#endif
     return;
 }

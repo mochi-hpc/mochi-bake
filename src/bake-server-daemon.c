@@ -10,7 +10,6 @@
 #include <assert.h>
 #include <unistd.h>
 #include <margo.h>
-#include <libpmemobj.h>
 #include <bake-server.h>
 
 typedef enum {

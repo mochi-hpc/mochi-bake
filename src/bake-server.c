@@ -18,7 +18,6 @@
 #include "bake-config.h"
 
 #include <assert.h>
-#include <libpmemobj.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>

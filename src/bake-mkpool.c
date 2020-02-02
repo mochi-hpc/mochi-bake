@@ -10,7 +10,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#include <libpmemobj.h>
 #include <bake-server.h>
 
 struct options
