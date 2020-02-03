@@ -56,7 +56,7 @@ int main(int argc, char **argv)
     uint64_t num_targets;
     bake_target_id_t bti[target_number];
 
-    fd = open(argv[1], O_RDONLY);
+    fd = open(argv[1], O_RDWR);
     if(fd < 0)
     {
         perror("open");
@@ -70,7 +70,7 @@ int main(int argc, char **argv)
         return(-1);
     }
 
-    local_region = mmap(NULL, statbuf.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    local_region = mmap(NULL, statbuf.st_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
     if(local_region == MAP_FAILED)
     {
         perror("mmap");
