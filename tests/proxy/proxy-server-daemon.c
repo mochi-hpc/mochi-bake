@@ -9,7 +9,6 @@
 #include <unistd.h>
 #include <uuid/uuid.h>
 #include <margo.h>
-#include <libpmemobj.h>
 #include <bake-client.h>
 
 #include "proxy-rpc.h"
