@@ -565,6 +565,7 @@ static void bake_create_write_persist_ult(hg_handle_t handle)
                         in.bulk_offset, in.bulk_size, &out.rid);
 finish:
     UNLOCK_PROVIDER;
+    margo_addr_free(mid, src_addr);
     RESPOND_AND_CLEANUP;
     return;
 }
