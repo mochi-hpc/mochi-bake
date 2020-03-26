@@ -13,7 +13,8 @@ src_libbake_client_la_LIBADD = src/libutil.la
 
 src_libbake_server_la_SOURCES += \
  src/bake-server.c \
- src/bake-pmem-backend.c
+ src/bake-pmem-backend.c \
+ src/bake-file-backend.c
 
 src_libbake_server_la_LIBADD = src/libutil.la
 
