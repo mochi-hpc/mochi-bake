@@ -98,14 +98,44 @@ void parse_args(int argc, char *argv[], struct options *opts)
     return;
 }
 
+/* TODO: this is temporary until we have a more complete solution for admin
+ * functions.
+ */
+extern int bake_file_makepool(
+        const char *file_name,
+        size_t file_size,
+        mode_t file_mode);
+
 int main(int argc, char *argv[])
 {
     struct options opts;
     int ret;
+    char* backend_type = NULL;
 
     parse_args(argc, argv, &opts);
 
-    ret = bake_makepool(opts.pmem_pool, opts.pool_size, opts.pool_mode);
+    /* figure out the backend by searching until the ":" in the file name */
+    char* tmp = strchr(opts.pmem_pool,':');
+    if(tmp != NULL) {
+        backend_type = strdup(opts.pmem_pool);
+        backend_type[(unsigned long)(tmp-opts.pmem_pool)] = '\0';
+        opts.pmem_pool = tmp+1;
+    } else {
+        backend_type = strdup("pmem");
+    }
 
+    if(strcmp(backend_type, "pmem") == 0) {
+        ret = bake_makepool(opts.pmem_pool, opts.pool_size, opts.pool_mode);
+    }
+    else if(strcmp(backend_type, "file") == 0) {
+        ret = bake_file_makepool(opts.pmem_pool, opts.pool_size, opts.pool_mode);
+    }
+    else {
+        fprintf(stderr, "ERROR: unknown backend type \"%s\"\n", backend_type);
+        free(backend_type);
+        return BAKE_ERR_BACKEND_TYPE;
+    }
+
+    free(backend_type);
     return(ret);
 }

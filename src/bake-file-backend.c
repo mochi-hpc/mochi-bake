@@ -1,3 +1,11 @@
+/*
+ * (C) 2020 The University of Chicago
+ *
+ * See COPYRIGHT in top-level directory.
+ */
+
+/* for O_DIRECT */
+#define _GNU_SOURCE
 #include <assert.h>
 #include <abt-io.h>
 #include "bake-config.h"
@@ -14,6 +22,9 @@
  * block-aligned, log-structured, file and accessed using directio through
  * the abt-io library.
  */
+
+/* TODO: determine proper alignment at runtime if possible */
+#define BAKE_ALIGNMENT 512
 
 /* definition of BAKE root data structure (just a uuid for now) */
 typedef struct
@@ -43,18 +54,49 @@ typedef struct {
     char* filename;
 } bake_file_entry_t;
 
-/* TODO: figure out how to modularize this; conflicts with pmem one right
- * now
- */
-#if 0
-int bake_makepool(
-        const char *pool_name,
-        size_t pool_size,
-        mode_t pool_mode)
+/* TODO: reorganize this later into the "admin library" model */
+int bake_file_makepool(
+        const char *file_name,
+        size_t file_size,
+        mode_t file_mode)
 {
-    return BAKE_ERR_OP_UNSUPPORTED;
+    int fd = -1;
+    bake_root_t *root;
+    int ret;
+
+    fd = open(file_name, O_EXCL|O_WRONLY|O_CREAT|O_DIRECT, file_mode);
+    if(fd < 0)
+    {
+        int save_errno = errno;
+        perror("open");
+        if(save_errno == EINVAL)
+            fprintf(stderr, "... does your file system support O_DIRECT? tmpfs does not.\n");
+        return(BAKE_ERR_IO);
+    }
+
+    /* we'll put a full block at the front of the file, the first bytes of
+     * which will contain the bake_root_t
+     */
+    ret = posix_memalign((void**)(&root), BAKE_ALIGNMENT, BAKE_ALIGNMENT);
+    assert(ret == 0);
+    memset(root, 0, BAKE_ALIGNMENT);
+
+    /* store the target id for this bake pool at the root */
+    uuid_generate(root->pool_id.id);
+
+    ret = write(fd, root, BAKE_ALIGNMENT);
+    if(ret != BAKE_ALIGNMENT)
+    {
+        perror("write");
+        free(root);
+        return(BAKE_ERR_IO);
+    }
+    free(root);
+
+    close(fd);
+
+    return BAKE_SUCCESS;
 }
-#endif
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 static int bake_file_backend_initialize(bake_provider_t provider,
