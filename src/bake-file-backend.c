@@ -273,9 +273,9 @@ static int bake_file_write_raw(backend_context_t context,
      */
 
     bake_file_entry_t *entry = (bake_file_entry_t*)context;
+    file_region_id_t* frid = (file_region_id_t*)rid.data;
     void* bounce_buffer;
     int ret;
-    file_region_id_t* frid = (file_region_id_t*)rid.data;
 
     /* TODO: implement this.  For now we only handle writes beginning at
      * offset zero of a region.  Writes that begin elsewhere will require a
@@ -355,7 +355,18 @@ static int bake_file_persist(backend_context_t context,
                              size_t offset,
                              size_t size)
 {
-    return BAKE_ERR_OP_UNSUPPORTED;
+    bake_file_entry_t *entry = (bake_file_entry_t*)context;
+    int ret;
+
+    /* NOTE: the size and offset doesn't matter.  There isn't any reasonably
+     * portable function that can be used to sync portion of a log; we have
+     * to sync the whole thing.
+     */
+    ret = abt_io_fdatasync(entry->abtioi, entry->log_fd);
+    if(ret != 0)
+        return(BAKE_ERR_IO);
+
+    return BAKE_SUCCESS;
 }
 
 static int bake_file_create_write_persist_raw(backend_context_t context,
