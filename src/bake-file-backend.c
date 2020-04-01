@@ -317,7 +317,7 @@ static int bake_file_write_raw(backend_context_t context,
     if(size+offset > frid->log_entry_size)
     {
         /* caller is attempting to write more data into this region than was
-         * was allocated for at creation time
+         * allocated for at creation time
          */
         return BAKE_ERR_OUT_OF_BOUNDS;
     }
@@ -407,8 +407,8 @@ static int bake_file_read_raw(backend_context_t context,
 
     if(size+offset > frid->log_entry_size)
     {
-        /* caller is attempting to write more data into this region than was
-         * was allocated for at creation time
+        /* caller is attempting to read more data from this region than was
+         * allocated for at creation time
          */
         return BAKE_ERR_OUT_OF_BOUNDS;
     }
@@ -569,7 +569,7 @@ static int transfer_data(
 {
     if(bulk_size+region_offset > log_entry_size)
     {
-        /* caller is attempting to write more data into this region than was
+        /* caller is attempting to access more data in this region than
          * was allocated for at creation time
          */
         return BAKE_ERR_OUT_OF_BOUNDS;
