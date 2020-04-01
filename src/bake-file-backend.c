@@ -28,6 +28,9 @@
 #define BAKE_ALIGN_UP(x) ( (((unsigned long)(x)) + 511)  & (~(511)) )
 #define BAKE_ALIGN_DOWN(x) ((unsigned long)(x) & (~(511)))
 
+#define TRANSFER_DATA_READ 1
+#define TRANSFER_DATA_WRITE 2
+
 /* definition of BAKE root data structure (just a uuid for now) */
 typedef struct
 {
@@ -37,7 +40,7 @@ typedef struct
 /* definition of internal BAKE region_id_t identifier for file back end */
 typedef struct
 {
-    off_t offset;
+    off_t log_entry_offset;
     size_t log_entry_size;
 } file_region_id_t;
 
@@ -55,6 +58,17 @@ typedef struct {
     char* root;
     char* filename;
 } bake_file_entry_t;
+
+static int transfer_data(
+    bake_file_entry_t* entry,
+    off_t log_entry_offset,
+    size_t log_entry_size,
+    uint64_t region_offset,
+    hg_bulk_t remote_bulk,
+    uint64_t remote_bulk_offset,
+    uint64_t bulk_size,
+    hg_addr_t src_addr,
+    int op_flag);
 
 /* TODO: reorganize this later into the "admin library" model */
 int bake_file_makepool(
@@ -229,7 +243,7 @@ static int bake_file_create(backend_context_t context,
 
     frid->log_entry_size = size;
     ABT_mutex_lock(entry->log_offset_mutex);
-    frid->offset = entry->log_offset;
+    frid->log_entry_offset = entry->log_offset;
     entry->log_offset += size;
     ABT_mutex_unlock(entry->log_offset_mutex);
 
@@ -315,7 +329,7 @@ static int bake_file_write_raw(backend_context_t context,
     memcpy(bounce_buffer, data, size);
 
     ret = abt_io_pwrite(entry->abtioi, entry->log_fd, bounce_buffer,
-        BAKE_ALIGN_UP(size), frid->offset);
+        BAKE_ALIGN_UP(size), frid->log_entry_offset);
     if(ret != BAKE_ALIGNMENT)
     {
         free(bounce_buffer);
@@ -336,7 +350,25 @@ static int bake_file_write_bulk(backend_context_t context,
                                 hg_addr_t source,
                                 size_t bulk_offset)
 {
-    return BAKE_ERR_OP_UNSUPPORTED;
+    bake_file_entry_t *entry = (bake_file_entry_t*)context;
+    file_region_id_t* frid = (file_region_id_t*)rid.data;
+    int ret;
+
+    /* TODO: implement this.  For now we only handle writes beginning at
+     * offset zero of a region.  Writes that begin elsewhere will require a
+     * r/m/w to handle correctly, since there is no requirement that bake
+     * write offsets are aligned.
+     */
+    if(region_offset != 0)
+    {
+        fprintf(stderr, "Error: Bake file backend does not yet support unaligned writes.\n");
+        return(BAKE_ERR_OP_UNSUPPORTED);
+    }
+
+    ret = transfer_data(entry, frid->log_entry_offset, frid->log_entry_size,
+        region_offset, bulk, bulk_offset, size, source, TRANSFER_DATA_WRITE);
+
+    return(ret);
 }
 
 /* utility function used to free bounce buffers created by
@@ -382,7 +414,7 @@ static int bake_file_read_raw(backend_context_t context,
     }
 
     /* not counting alignment, what portion of the log do we want? */
-    natural_offset_start = frid->offset + offset;
+    natural_offset_start = frid->log_entry_offset + offset;
     natural_offset_end = natural_offset_start + size;
     /* align both to find log extent */
     log_offset_start = BAKE_ALIGN_DOWN(natural_offset_start);
@@ -423,7 +455,14 @@ static int bake_file_read_bulk(backend_context_t context,
                                size_t bulk_offset,
                                size_t* bytes_read)
 {
-    return BAKE_ERR_OP_UNSUPPORTED;
+    bake_file_entry_t *entry = (bake_file_entry_t*)context;
+    file_region_id_t* frid = (file_region_id_t*)rid.data;
+    int ret;
+
+    ret = transfer_data(entry, frid->log_entry_offset, frid->log_entry_size,
+        region_offset, bulk, bulk_offset, size, source, TRANSFER_DATA_READ);
+
+    return(ret);
 }
 
 static int bake_file_persist(backend_context_t context,
@@ -516,3 +555,26 @@ bake_backend g_bake_file_backend = {
     ._set_conf                  = bake_file_set_conf
 };
 
+/* common utility function for relaying data in read_bulk/write_bulk */
+static int transfer_data(
+    bake_file_entry_t* entry,
+    off_t log_entry_offset,
+    size_t log_entry_size,
+    uint64_t region_offset,
+    hg_bulk_t remote_bulk,
+    uint64_t remote_bulk_offset,
+    uint64_t bulk_size,
+    hg_addr_t src_addr,
+    int op_flag)
+{
+    if(bulk_size+region_offset > log_entry_size)
+    {
+        /* caller is attempting to write more data into this region than was
+         * was allocated for at creation time
+         */
+        return BAKE_ERR_OUT_OF_BOUNDS;
+    }
+
+
+    return(BAKE_ERR_OP_UNSUPPORTED);
+}
