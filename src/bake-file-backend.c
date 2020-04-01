@@ -208,11 +208,9 @@ static int bake_file_create(backend_context_t context,
     bake_file_entry_t *entry = (bake_file_entry_t*)context;
     int ret;
     void *zero_block;
-    file_region_id_t* frid;
+    file_region_id_t* frid = (file_region_id_t*)rid->data;
 
     assert(sizeof(file_region_id_t) <= BAKE_REGION_ID_DATA_SIZE);
-
-    frid = (file_region_id_t*)rid->data;
 
     /* round up size for directio alignment */
     size = BAKE_ALIGN_UP(size);
@@ -266,7 +264,55 @@ static int bake_file_write_raw(backend_context_t context,
                                size_t size,
                                const void* data)
 {
-    return BAKE_ERR_OP_UNSUPPORTED;
+    /* NOTES:
+     * - this routine is most likely called in the eager write pathh
+     * - the data buffer is already present, and is probably small, but it
+     *   is very unlikely that the offset and size are both page aligned
+     * - we therefore create an intermediate aligned buffer to copy through
+     *   and write to the log
+     */
+
+    bake_file_entry_t *entry = (bake_file_entry_t*)context;
+    void* bounce_buffer;
+    int ret;
+    file_region_id_t* frid = (file_region_id_t*)rid.data;
+
+    /* TODO: implement this.  For now we only handle writes beginning at
+     * offset zero of a region.  Writes that begin elsewhere will require a
+     * r/m/w to handle correctly, since there is no requirement that bake
+     * write offsets are aligned.
+     */
+    if(offset != 0)
+    {
+        fprintf(stderr, "Error: Bake file backend does not yet support unaligned writes.\n");
+        return(BAKE_ERR_OP_UNSUPPORTED);
+    }
+
+    if(size > frid->log_entry_size)
+    {
+        /* caller is attempting to write more data into this region than was
+         * was allocated for at creation time
+         */
+        return BAKE_ERR_OUT_OF_BOUNDS;
+    }
+
+    ret = posix_memalign(&bounce_buffer, BAKE_ALIGNMENT, BAKE_ALIGN_UP(size));
+    if(ret != 0)
+        return(BAKE_ERR_IO);
+
+    memcpy(bounce_buffer, data, size);
+
+    ret = abt_io_pwrite(entry->abtioi, entry->log_fd, bounce_buffer,
+        BAKE_ALIGN_UP(size), frid->offset);
+    if(ret != BAKE_ALIGNMENT)
+    {
+        free(bounce_buffer);
+        return(BAKE_ERR_IO);
+    }
+
+    free(bounce_buffer);
+
+    return(BAKE_SUCCESS);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
