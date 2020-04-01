@@ -46,7 +46,7 @@ typedef struct {
 } region_content_t;
 
 typedef struct {
-    bake_provider_t provider;  /* TODO: is this needed here? */
+    bake_provider_t provider;
     int log_fd;       /* file descriptor for log */
     off_t log_offset; /* next available unused offset in log */
     ABT_mutex log_offset_mutex; /* protects the above during concurrent region creation */
@@ -108,9 +108,18 @@ static int bake_file_backend_initialize(bake_provider_t provider,
 {
     int ret = BAKE_SUCCESS;
     bake_file_entry_t* new_entry = calloc(1, sizeof(*new_entry));
+    new_entry->provider = provider;
     new_entry->log_fd = -1;
     const char *tmp;
     ptrdiff_t d;
+
+    if(!provider->config.pipeline_enable)
+    {
+        fprintf(stderr, "Error: The Bake file backend requires pipelining.\n");
+        fprintf(stderr, "   Enable pipelining with -p on the bake-server-daemon command line or\n");
+        fprintf(stderr, "   programmatically with bake_provider_set_conf(provider, \"pipeline_enabled\", \"1\")\n");
+        return(BAKE_ERR_INVALID_ARG);
+    }
 
     tmp = strrchr(path, '/');
     if(!tmp)

@@ -165,6 +165,9 @@ int main(int argc, char **argv)
                 return(-1);
             }
 
+            if(opts.pipeline_enabled)
+                bake_provider_set_conf(provider, "pipeline_enabled", "1");
+
             ret = bake_provider_add_storage_target(provider, opts.bake_pools[i], &tid);
 
             if(ret != 0)
@@ -174,8 +177,6 @@ int main(int argc, char **argv)
                 return(-1);
             }
 
-            if(opts.pipeline_enabled)
-                bake_provider_set_conf(provider, "pipeline_enabled", "1");
             printf("Provider %d managing new target at multiplex id %d\n", i, i+1);
         }
 
@@ -194,6 +195,9 @@ int main(int argc, char **argv)
             return(-1);
         }
 
+        if(opts.pipeline_enabled)
+            bake_provider_set_conf(provider, "pipeline_enabled", "1");
+
         for(i=0; i < opts.num_pools; i++) {
             bake_target_id_t tid;
             ret = bake_provider_add_storage_target(provider, opts.bake_pools[i], &tid);
@@ -205,8 +209,6 @@ int main(int argc, char **argv)
                 return(-1);
             }
 
-            if(opts.pipeline_enabled)
-                bake_provider_set_conf(provider, "pipeline_enabled", "1");
             printf("Provider 0 managing new target at multiplex id %d\n", 1);
         }
     }
