@@ -268,7 +268,7 @@ static int bake_file_write_raw(backend_context_t context,
                                const void* data)
 {
     /* NOTES:
-     * - this routine is most likely called in the eager write pathh
+     * - this routine is most likely called in the eager write path
      * - the data buffer is already present, and is probably small, but it
      *   is very unlikely that the offset and size are both page aligned
      * - we therefore create an intermediate aligned buffer to copy through
