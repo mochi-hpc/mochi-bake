@@ -187,7 +187,15 @@ error_cleanup:
 ////////////////////////////////////////////////////////////////////////////////////////////
 static int bake_file_backend_finalize(backend_context_t context)
 {
-    return BAKE_ERR_OP_UNSUPPORTED;
+    bake_file_entry_t *entry = (bake_file_entry_t*)context;
+    free(entry->file_root);
+    close(entry->log_fd);
+    abt_io_finalize(entry->abtioi);
+    free(entry->filename);
+    free(entry->root);
+    free(entry);
+
+    return BAKE_SUCCESS;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
