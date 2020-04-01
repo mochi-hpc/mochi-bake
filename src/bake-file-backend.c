@@ -104,8 +104,86 @@ static int bake_file_backend_initialize(bake_provider_t provider,
                                         bake_target_id_t *target,
                                         backend_context_t *context)
 {
-    return BAKE_ERR_OP_UNSUPPORTED;
+    int ret = BAKE_SUCCESS;
+    bake_file_entry_t* new_entry = calloc(1, sizeof(*new_entry));
+    new_entry->log_fd = -1;
+    const char *tmp;
+    ptrdiff_t d;
+
+    tmp = strrchr(path, '/');
+    if(!tmp)
+        tmp = path;
+    new_entry->filename = strdup(tmp);
+    d = tmp - path;
+    new_entry->root = strndup(path, d);
+
+    /* initialize an abt-io instance just for this target */
+    /* TODO: make number of backing threads tunable */
+    new_entry->abtioi = abt_io_init(8);
+    if(!new_entry->abtioi)
+    {
+        ret = BAKE_ERR_IO;
+        goto error_cleanup;
+    }
+
+    new_entry->log_fd = abt_io_open(new_entry->abtioi,
+        path, O_RDWR|O_DIRECT, 0);
+    if(new_entry->log_fd < 0) {
+        perror("open");
+        ret = BAKE_ERR_IO;
+        goto error_cleanup;
+    }
+    /* TODO: is this code path used for existing targets too?  If so, need
+     * to set log offset appropriately
+     */
+    new_entry->log_offset = BAKE_ALIGNMENT;  /* skip over header info */
+    ABT_mutex_create(&new_entry->log_offset_mutex);
+
+    /* check to make sure the root is properly set */
+    ret = posix_memalign((void**)(&new_entry->file_root),
+        BAKE_ALIGNMENT, BAKE_ALIGNMENT);
+    if(ret < 0)
+    {
+        ret = BAKE_ERR_IO;
+        goto error_cleanup;
+    }
+    ret = abt_io_pread(new_entry->abtioi, new_entry->log_fd,
+        new_entry->file_root, BAKE_ALIGNMENT, 0);
+    if(ret < 0)
+    {
+        ret = BAKE_ERR_IO;
+        goto error_cleanup;
+    }
+    *target = new_entry->file_root->pool_id;
+
+    if(uuid_is_null(target->id))
+    {
+        fprintf(stderr, "Error: BAKE pool %s is not properly formatted\n", path);
+        ret = BAKE_ERR_IO;
+        goto error_cleanup;
+    }
+
+    *context = new_entry;
+    return 0;
+
+error_cleanup:
+    if(new_entry)
+    {
+        if(new_entry->file_root)
+            free(new_entry->file_root);
+        if(new_entry->log_fd > -1)
+            close(new_entry->log_fd);
+        if(new_entry->abtioi)
+            abt_io_finalize(new_entry->abtioi);
+        if(new_entry->filename)
+            free(new_entry->filename);
+        if(new_entry->root)
+            free(new_entry->root);
+        free(new_entry);
+    }
+    return(ret);
 }
+
 ////////////////////////////////////////////////////////////////////////////////////////////
 static int bake_file_backend_finalize(backend_context_t context)
 {
