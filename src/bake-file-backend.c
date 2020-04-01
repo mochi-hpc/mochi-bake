@@ -291,7 +291,7 @@ static int bake_file_write_raw(backend_context_t context,
         return(BAKE_ERR_OP_UNSUPPORTED);
     }
 
-    if(size > frid->log_entry_size)
+    if(size+offset > frid->log_entry_size)
     {
         /* caller is attempting to write more data into this region than was
          * was allocated for at creation time
@@ -330,6 +330,16 @@ static int bake_file_write_bulk(backend_context_t context,
     return BAKE_ERR_OP_UNSUPPORTED;
 }
 
+/* utility function used to free bounce buffers created by
+ * bake_file_read_raw().  It is like a normal fre() except that it must
+ * round down to block alignment to find the correct pointer to free.
+ */
+static void bake_file_read_raw_free(void* ptr)
+{
+    free((void*)(BAKE_ALIGN_DOWN(ptr)));
+    return;
+}
+
 static int bake_file_read_raw(backend_context_t context,
                               bake_region_id_t rid,
                               size_t offset,
@@ -338,7 +348,61 @@ static int bake_file_read_raw(backend_context_t context,
                               uint64_t* data_size,
                               free_fn* free_data)
 {
-    return BAKE_ERR_OP_UNSUPPORTED;
+    /* NOTES:
+     * - this routine is most likely called in the eager read path
+     * - the api provides both a buffer pointer and a free function pointer
+     *   to the caller. We take advantage of that to account for alignment
+     *   within the log and bounce buffer.
+     * - doing this with a single intermediate buffer and one I/O operation
+     *   is fine, as we expect this to be a small access.
+     */
+
+    bake_file_entry_t *entry = (bake_file_entry_t*)context;
+    file_region_id_t* frid = (file_region_id_t*)rid.data;
+    void* bounce_buffer;
+    int ret;
+    off_t natural_offset_start, natural_offset_end;
+    off_t log_offset_start, log_offset_end;
+
+    if(size+offset > frid->log_entry_size)
+    {
+        /* caller is attempting to write more data into this region than was
+         * was allocated for at creation time
+         */
+        return BAKE_ERR_OUT_OF_BOUNDS;
+    }
+
+    /* not counting alignment, what portion of the log do we want? */
+    natural_offset_start = frid->offset + offset;
+    natural_offset_end = natural_offset_start + size;
+    /* align both to find log extent */
+    log_offset_start = BAKE_ALIGN_DOWN(natural_offset_start);
+    log_offset_end = BAKE_ALIGN_UP(natural_offset_end);
+
+    /* create aligned bounce buffer large enough to hold log extent */
+    ret = posix_memalign(&bounce_buffer, BAKE_ALIGNMENT, log_offset_end-log_offset_start);
+    if(ret != 0)
+        return(BAKE_ERR_IO);
+
+    /* read extent from log */
+    ret = abt_io_pread(entry->abtioi, entry->log_fd, bounce_buffer,
+        log_offset_end-log_offset_start, log_offset_start);
+    if(ret != BAKE_ALIGNMENT)
+    {
+        free(bounce_buffer);
+        return(BAKE_ERR_IO);
+    }
+
+    /* give caller pointer to correct offset within log extent */
+    *data = bounce_buffer + (natural_offset_start-log_offset_start);
+    *data_size = size;
+    /* free function is special; the caller cannot free the pointer it is
+     * given above since it isn't necessarily the start addr of the bounce
+     * buffer
+     */
+    *free_data = bake_file_read_raw_free;
+
+    return(BAKE_SUCCESS);
 }
 
 static int bake_file_read_bulk(backend_context_t context,
