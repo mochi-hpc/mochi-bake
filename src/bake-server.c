@@ -23,6 +23,7 @@
 #include "bake-provider.h"
 
 extern bake_backend g_bake_pmem_backend;
+extern bake_backend g_bake_file_backend;
 
 DECLARE_MARGO_RPC_HANDLER(bake_shutdown_ult)
 DECLARE_MARGO_RPC_HANDLER(bake_create_ult)
@@ -283,6 +284,8 @@ int bake_provider_add_storage_target(
     
     if(strcmp(backend_type, "pmem") == 0) {
         new_entry->backend = &g_bake_pmem_backend;
+    } else if(strcmp(backend_type, "file") == 0) {
+        new_entry->backend = &g_bake_file_backend;
     } else {
         fprintf(stderr, "ERROR: unknown backend type \"%s\"\n", backend_type);
         free(backend_type);
