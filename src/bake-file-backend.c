@@ -436,14 +436,6 @@ static int bake_file_persist(backend_context_t context,
     return BAKE_SUCCESS;
 }
 
-static int bake_file_create_write_persist_raw(backend_context_t context,
-                                              const void* data,
-                                              size_t size,
-                                              bake_region_id_t *rid)
-{
-    return BAKE_ERR_OP_UNSUPPORTED;
-}
-
 static int bake_file_create_write_persist_bulk(backend_context_t context,
                                                hg_bulk_t bulk,
                                                hg_addr_t source,
@@ -503,7 +495,7 @@ bake_backend g_bake_file_backend = {
     ._read_raw                  = bake_file_read_raw,
     ._read_bulk                 = bake_file_read_bulk,
     ._persist                   = bake_file_persist,
-    ._create_write_persist_raw  = bake_file_create_write_persist_raw,
+    ._create_write_persist_raw  = NULL, /* use default implementation */
     ._create_write_persist_bulk = bake_file_create_write_persist_bulk,
     ._get_region_size           = bake_file_get_region_size,
     ._get_region_data           = bake_file_get_region_data,

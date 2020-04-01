@@ -586,8 +586,27 @@ static void bake_eager_create_write_persist_ult(hg_handle_t handle)
 
     memset(&out, 0, sizeof(out));
 
-    out.ret = target->backend->_create_write_persist_raw(
-                    target->context, in.buffer, in.size, &out.rid);
+    if(!target->backend->_create_write_persist_raw)
+    {
+        /* If the backend does not provide a combination
+         * create_write_persist function, then issue constituent backend
+         * calls instead.
+         */
+        out.ret = target->backend->_create(target->context, in.size, &out.rid);
+        if(out.ret != BAKE_SUCCESS)
+            goto finish;
+        out.ret = target->backend->_write_raw(target->context, out.rid,
+            0, in.size, in.buffer);
+        if(out.ret != BAKE_SUCCESS)
+            goto finish;
+        out.ret = target->backend->_persist(target->context, out.rid,
+            0, in.size);
+    }
+    else
+    {
+        out.ret = target->backend->_create_write_persist_raw(
+            target->context, in.buffer, in.size, &out.rid);
+    }
 
 finish:
     UNLOCK_PROVIDER;
