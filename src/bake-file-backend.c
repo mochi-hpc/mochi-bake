@@ -165,6 +165,9 @@ static int bake_file_backend_initialize(bake_provider_t provider,
         goto error_cleanup;
     }
 
+    fprintf(stderr, "WARNING: Bake file backend does not yet support the following:\n");
+    fprintf(stderr, "    * writes to non-zero region offsets\n");
+
     *context = new_entry;
     return 0;
 
