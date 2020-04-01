@@ -25,6 +25,8 @@
 
 /* TODO: determine proper alignment at runtime if possible */
 #define BAKE_ALIGNMENT 512
+#define BAKE_ALIGN_UP(x) ( (((unsigned long)(x)) + 511)  & (~(511)) )
+#define BAKE_ALIGN_DOWN(x) ((unsigned long)(x) & (~(511)))
 
 /* definition of BAKE root data structure (just a uuid for now) */
 typedef struct
@@ -203,7 +205,58 @@ static int bake_file_create(backend_context_t context,
                             size_t size,
                             bake_region_id_t *rid)
 {
-    return BAKE_ERR_OP_UNSUPPORTED;
+    bake_file_entry_t *entry = (bake_file_entry_t*)context;
+    int ret;
+    void *zero_block;
+    file_region_id_t* frid;
+
+    assert(sizeof(file_region_id_t) <= BAKE_REGION_ID_DATA_SIZE);
+
+    frid = (file_region_id_t*)rid->data;
+
+    /* round up size for directio alignment */
+    size = BAKE_ALIGN_UP(size);
+
+    frid->log_entry_size = size;
+    ABT_mutex_lock(entry->log_offset_mutex);
+    frid->offset = entry->log_offset;
+    entry->log_offset += size;
+    ABT_mutex_unlock(entry->log_offset_mutex);
+
+    /* We write one empty block at the end of the log extent covered by this
+     * region.  The goal is to extend the log file length (if
+     * necessary) so that if the daemon crashes and restarts it will begin
+     * allocating at the correct offset rather than possibly reusing space
+     * that was promised to a previous region.
+     *
+     * Ideally this would just be a metadata update to the file system since
+     * we don't care about data contents in this range, but it's not clear
+     * that there is an fallocate() variant that will extend the file size
+     * without allocating blocks.  So we write a block and sync.
+     *
+     * We write a full block to make sure it will work with O_DIRECT.
+     */
+    ret = posix_memalign(&zero_block, BAKE_ALIGNMENT, BAKE_ALIGNMENT);
+    if(ret != 0)
+        return(BAKE_ERR_IO);
+
+    ret = abt_io_pwrite(entry->abtioi, entry->log_fd, zero_block,
+        BAKE_ALIGNMENT, entry->log_offset-BAKE_ALIGNMENT);
+    if(ret != BAKE_ALIGNMENT)
+    {
+        free(zero_block);
+        return(BAKE_ERR_IO);
+    }
+
+    ret = abt_io_fdatasync(entry->abtioi, entry->log_fd);
+    if(ret != 0)
+    {
+        free(zero_block);
+        return(BAKE_ERR_IO);
+    }
+
+    free(zero_block);
+    return(BAKE_SUCCESS);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
