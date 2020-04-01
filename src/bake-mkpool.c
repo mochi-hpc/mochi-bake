@@ -24,6 +24,7 @@ void usage(int argc, char *argv[])
 {
     fprintf(stderr, "Usage: bake-mkpool [OPTIONS] <pmem_pool>\n");
     fprintf(stderr, "       pmem_pool is the path to the pmemobj pool to create\n");
+    fprintf(stderr, "           (prepend pmem: or file: to specify backend format)\n");
     fprintf(stderr, "       [-s size] create pool file named <pmem_pool> with specified size (K, M, G, etc. suffixes allowed)\n");
     fprintf(stderr, "Example: ./bake-mkpool -s 16M /dev/shm/foo.dat\n");
     fprintf(stderr, "Note: if -s is not specified, then target file must already exist with desired size.\n");
