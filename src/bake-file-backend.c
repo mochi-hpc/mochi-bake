@@ -59,6 +59,37 @@ typedef struct {
     char* filename;
 } bake_file_entry_t;
 
+typedef struct xfer_args {
+    /* information about underlying target */
+    bake_file_entry_t entry;
+
+    /* information about remote host */
+    hg_addr_t remote_addr;   /* remote address */
+    hg_bulk_t remote_bulk;   /* remote bulk handle for transfers */
+    size_t    remote_offset; /* remote offset at which to take the data */
+
+    /* state of region to be accessed in local log */
+    off_t  log_entry_offset; /* log extent to access */
+    size_t log_entry_size;   /* log extent to access */
+    size_t log_issued;       /* log accesses issued (bytes) */
+    size_t log_retired;      /* log accesses retired (bytes) */
+
+    /* TODO: pick back up here with comments */
+    /* state of network transmission */
+    size_t transmit_size;          /* total amount of data to xmit */
+    off_t  transmit_offset_in_log; /* what position in log to xmit first */
+    size_t transmit_issued;        /* number of xmit bytes issued */
+    size_t poolset_max_size;       /* max xmit size supported by poolset */
+
+    /* state of transfer as a whole */
+    int32_t      ret;              /* return code (0 on success) */
+    int          ults_active;      /* number of ULTs working on this xfer */
+    ABT_mutex    mutex;            /* protect shared fields in this struct */
+    ABT_eventual eventual;         /* signal when complete */
+    int          op_flag;          /* read or write */
+} xfer_args;
+
+
 static int transfer_data(
     bake_file_entry_t* entry,
     off_t log_entry_offset,
