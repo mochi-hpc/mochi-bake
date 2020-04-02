@@ -61,7 +61,7 @@ typedef struct {
 
 typedef struct xfer_args {
     /* information about underlying target */
-    bake_file_entry_t entry;
+    bake_file_entry_t *entry;
 
     /* information about remote host */
     hg_addr_t remote_addr;   /* remote address */
@@ -74,7 +74,6 @@ typedef struct xfer_args {
     size_t log_issued;       /* log accesses issued (bytes) */
     size_t log_retired;      /* log accesses retired (bytes) */
 
-    /* TODO: pick back up here with comments */
     /* state of network transmission */
     size_t transmit_size;          /* total amount of data to xmit */
     off_t  transmit_offset_in_log; /* what position in log to xmit first */
@@ -100,6 +99,7 @@ static int transfer_data(
     uint64_t bulk_size,
     hg_addr_t src_addr,
     int op_flag);
+static void xfer_ult(void *_args);
 
 /* TODO: reorganize this later into the "admin library" model */
 int bake_file_makepool(
@@ -598,6 +598,10 @@ static int transfer_data(
     hg_addr_t src_addr,
     int op_flag)
 {
+    off_t log_end_offset;
+    struct xfer_args xargs = {0};
+    int i;
+
     if(bulk_size+region_offset > log_entry_size)
     {
         /* caller is attempting to access more data in this region than
@@ -606,6 +610,56 @@ static int transfer_data(
         return BAKE_ERR_OUT_OF_BOUNDS;
     }
 
+    /* where in the log do we stop access? */
+    log_end_offset = log_entry_offset + region_offset + bulk_size - remote_bulk_offset;
+    log_end_offset = BAKE_ALIGN_UP(log_end_offset);
 
-    return(BAKE_ERR_OP_UNSUPPORTED);
+    xargs.entry = entry;
+    xargs.remote_addr = src_addr;
+    xargs.remote_bulk = remote_bulk;
+    xargs.remote_offset = remote_bulk_offset;
+    xargs.log_entry_offset = BAKE_ALIGN_DOWN(log_entry_offset + region_offset);
+    xargs.log_entry_size = log_end_offset - xargs.log_entry_offset;
+    xargs.log_issued = 0;
+    xargs.log_retired = 0;
+    xargs.transmit_size = bulk_size - remote_bulk_offset;
+    xargs.transmit_offset_in_log =
+        log_entry_offset + region_offset - xargs.log_entry_offset;
+    xargs.transmit_issued = 0;
+    margo_bulk_poolset_get_max(entry->provider->poolset, &xargs.poolset_max_size);
+    xargs.ret = 0;
+    xargs.ults_active = 0;
+    ABT_mutex_create(&xargs.mutex);
+    ABT_eventual_create(0, &xargs.eventual);
+
+    /* divide amount to be accessed in log by max poolset size and create
+     * one ULT per chunk
+     */
+    for(i=0; i<xargs.log_entry_size; i+= xargs.poolset_max_size)
+        xargs.ults_active++;
+    for(i=0; i<xargs.log_entry_size; i+= xargs.poolset_max_size)
+    {
+        /* NOTE: deliberately set output tid to NULL to ignore.  The last
+         * thread out of this set to complete will signal eventual below,
+         * rather than joining
+         */
+        ABT_thread_create(entry->provider->handler_pool, xfer_ult, &xargs,
+            ABT_THREAD_ATTR_NULL, NULL);
+    }
+
+    ABT_eventual_wait(xargs.eventual, NULL);
+    ABT_eventual_free(&xargs.eventual);
+
+    /* consolidated error code (0 if all successful, otherwise first
+     * non-zero error code)
+     */
+    return(xargs.ret);
+}
+
+/* worker function for each ULT involved in a transfer */
+static void xfer_ult(void *_args)
+{
+    /* TODO: fill this in */
+    assert(0);
+    return;
 }
