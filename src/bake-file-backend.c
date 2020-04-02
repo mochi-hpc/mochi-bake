@@ -99,6 +99,7 @@ static int transfer_data(
     uint64_t bulk_size,
     hg_addr_t src_addr,
     int op_flag);
+
 static void xfer_ult(void *_args);
 
 /* TODO: reorganize this later into the "admin library" model */
@@ -629,6 +630,7 @@ static int transfer_data(
     margo_bulk_poolset_get_max(entry->provider->poolset, &xargs.poolset_max_size);
     xargs.ret = 0;
     xargs.ults_active = 0;
+    xargs.op_flag = op_flag;
     ABT_mutex_create(&xargs.mutex);
     ABT_eventual_create(0, &xargs.eventual);
 
@@ -659,7 +661,175 @@ static int transfer_data(
 /* worker function for each ULT involved in a transfer */
 static void xfer_ult(void *_args)
 {
-    /* TODO: fill this in */
-    assert(0);
+    struct xfer_args *args = _args;
+
+    /* Variables with a this_ prefix are used to describe the
+     * specific extent that this ULT is working on at a given time (as
+     * opposed to the mutex-locked shared state tracked in the xfer_args).
+     */
+    size_t this_log_size;
+    size_t this_transmit_size;
+    off_t this_log_offset;
+    off_t this_transmit_offset_in_log = 0;
+    size_t this_remote_offset;
+
+    /* references to local RDMA region */
+    hg_bulk_t local_bulk = HG_BULK_NULL;
+    void *local_bulk_ptr;
+
+    /* flag to indicate if this ULT is the one responsible for cleaning up
+     * the transfer state on completion
+     */
+    int turn_out_the_lights = 0;
+
+    /* misc */
+    size_t tmp_buf_size;
+    hg_uint32_t tmp_count;
+    int ret;
+
+    /* Each ULT runs a loop here to find work to do.  We don't care which
+     * ULTs get there first.  The general strategy of the loop is to loop
+     * over the entire log extent that needs to be accessed and then filter
+     * out the parts that need to be trasmitted to client.  File alignment
+     * is stricter (because we are using directio) and is a superset of the
+     * data to be transmitted.
+     */
+    /* Hold lock going into loop so that this ULT can pull of it's unit of
+     * work to operate on
+     */
+    ABT_mutex_lock(args->mutex);
+    /* have we issued all of the necessary file operations or hit an error
+     * already?
+     */
+    while(args->log_issued < args->log_entry_size && !args->ret)
+    {
+        /* calculate what extent to work on in this cycle, both in file and
+         * in terms of remote transmission
+         */
+        if((args->log_entry_size - args->log_issued) > args->poolset_max_size)
+            this_log_size = args->poolset_max_size;
+        else
+            this_log_size = args->log_entry_size - args->log_issued;
+        this_log_offset = args->log_entry_offset + args->log_issued;
+        this_remote_offset = args->remote_offset + args->transmit_issued;
+        this_transmit_size = this_log_size;
+        if(args->transmit_issued == 0)
+        {
+            /* first network transmission */
+            /* skip unused part of first block, if present */
+            this_transmit_size -= args->transmit_offset_in_log;
+            this_transmit_offset_in_log = args->transmit_offset_in_log;
+        }
+        else
+        {
+            this_transmit_offset_in_log = 0;
+        }
+        /* truncate transmission at the end if needed */
+        if((this_transmit_size + args->transmit_issued) > args->transmit_size)
+            this_transmit_size = args->transmit_size - args->transmit_issued;
+
+        /* update shared state for the transfer */
+        args->log_issued += this_log_size;
+        args->transmit_issued += this_transmit_size;
+
+        /* drop mutex while we work on our local piece */
+        ABT_mutex_unlock(args->mutex);
+
+        /* get buffer */
+        /* this will block until a buffer is available if pool is exhausted */
+        ret = margo_bulk_poolset_get(args->entry->provider->poolset, this_log_size, &local_bulk);
+        if(ret != 0 && args->ret == 0)
+        {
+            args->ret = ret;
+            goto finished;
+        }
+        /* find pointer of memory in buffer */
+        ret = margo_bulk_access(local_bulk, 0,
+            this_log_size, HG_BULK_READWRITE, 1,
+            &local_bulk_ptr, &tmp_buf_size, &tmp_count);
+        /* shouldn't ever fail in this scenario */
+        assert(ret == 0);
+
+        /* margo pool buffers are supposed to be page aligned already.  Just
+         * safety checking here.
+         */
+        assert((long unsigned)local_bulk_ptr % 4096 == 0);
+
+        if(args->op_flag == TRANSFER_DATA_WRITE)
+        {
+            /* rdma transfer */
+            ret = margo_bulk_transfer(args->entry->provider->mid, HG_BULK_PULL,
+                args->remote_addr, args->remote_bulk,
+                this_remote_offset, local_bulk, 0, this_transmit_size);
+            if(ret != 0 && args->ret == 0)
+            {
+                args->ret = ret;
+                goto finished;
+            }
+
+            /* relay to log */
+            ret = abt_io_pwrite(args->entry->abtioi, args->entry->log_fd,
+                local_bulk_ptr, this_log_size, this_log_offset);
+            if(ret != this_log_size && args->ret == 0)
+            {
+                args->ret = ret;
+                goto finished;
+            }
+        }
+        else if(args->op_flag == TRANSFER_DATA_READ)
+        {
+            /* read from log */
+            ret = abt_io_pread(args->entry->abtioi, args->entry->log_fd,
+                local_bulk_ptr, this_log_size, this_log_offset);
+            if(ret != this_log_size && args->ret == 0)
+            {
+                args->ret = ret;
+                goto finished;
+            }
+
+            /* rdma transfer */
+            ret = margo_bulk_transfer(args->entry->provider->mid, HG_BULK_PUSH,
+                args->remote_addr, args->remote_bulk,
+                this_remote_offset, local_bulk, this_transmit_offset_in_log,
+                this_transmit_size);
+            if(ret != 0 && args->ret == 0)
+            {
+                args->ret = ret;
+                goto finished;
+            }
+        }
+        else
+            assert(0);
+
+        /* let go of bulk handle (we'll re-acquire one on next loop
+         * iteration if we have more work to do) */
+        margo_bulk_poolset_release(args->entry->provider->poolset, local_bulk);
+        local_bulk = HG_BULK_NULL;
+
+        ABT_mutex_lock(args->mutex);
+        args->log_retired += this_log_size;
+    }
+
+    ABT_mutex_unlock(args->mutex);
+
+finished:
+    if(local_bulk != HG_BULK_NULL)
+        margo_bulk_poolset_release(args->entry->provider->poolset, local_bulk);
+    ABT_mutex_lock(args->mutex);
+    args->ults_active--;
+    /* The ULT that sets active to zero is the last one that can possibly
+     * hold this mutex
+     */
+    if(!args->ults_active)
+        turn_out_the_lights = 1;
+    ABT_mutex_unlock(args->mutex);
+
+    /* last ULT to exit cleans up remaining resources and signals caller */
+    if(turn_out_the_lights)
+    {
+        ABT_mutex_free(&args->mutex);
+        ABT_eventual_set(args->eventual, NULL, 0);
+    }
+
     return;
 }
