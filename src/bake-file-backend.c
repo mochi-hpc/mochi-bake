@@ -543,7 +543,30 @@ static int bake_file_get_region_data(backend_context_t context,
 static int bake_file_remove(backend_context_t context,
                             bake_region_id_t rid)
 {
-    return BAKE_ERR_OP_UNSUPPORTED;
+    bake_file_entry_t *entry = (bake_file_entry_t*)context;
+    file_region_id_t* frid = (file_region_id_t*)rid.data;
+    int ret;
+
+    /* Rationale:
+     *
+     * All regions are stored in a single unified log, and indexed by their
+     * offset into that log.  To remove an entry, we therefore punch a hole
+     * in the log so that the underlying file system can deallocate the
+     * associated blocks without perturbing the position of other log
+     * elements.
+     *
+     * The block-level punch is likely to succeed (on file systems that
+     * support this operation) because we are using directio and each region
+     * is perfectly block aligned.
+     *
+     * The log could be defragmented, but that would be a higher level
+     * opertion.
+     */
+    ret = abt_io_fallocate(entry->abtioi, entry->log_fd,
+        FALLOC_FL_PUNCH_HOLE|FALLOC_FL_KEEP_SIZE, frid->log_entry_offset,
+        frid->log_entry_size);
+
+    return(ret);
 }
 
 static int bake_file_migrate_region(backend_context_t context,
