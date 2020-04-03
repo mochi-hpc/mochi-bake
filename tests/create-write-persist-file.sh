@@ -28,14 +28,17 @@ fi
 
 wait
 
+# commented out 2020-04; there is no corresponding functionality for this 
+# in the file backend
+
 # check that the underlying pool has the object we created
 # XXX note this assumes pmem pools -- may want to write our
 # own wrapper for this functionality at some point
-num_objs=`pmempool info -ns $TMPBASE/svr-1.dat | grep "Number of objects" | head -n 1 | cut -d: -f2 | awk '{$1=$1};1'`
-if [ $num_objs -ne 1 ]; then
-    echo "Invalid number of objects in BAKE pool"
-    exit 1
-fi
+# num_objs=`pmempool info -ns $TMPBASE/svr-1.dat | grep "Number of objects" | head -n 1 | cut -d: -f2 | awk '{$1=$1};1'`
+# if [ $num_objs -ne 1 ]; then
+#     echo "Invalid number of objects in BAKE pool"
+#     exit 1
+# fi
 
 echo cleaning up $TMPBASE
 rm -rf $TMPBASE
