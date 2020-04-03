@@ -12,7 +12,13 @@ TESTS += \
  tests/copy-to-and-from-multi-providers.sh \
  tests/copy-to-and-from-multi-targets.sh \
  tests/create-write-persist.sh \
- tests/create-write-persist-remove.sh
+ tests/create-write-persist-remove.sh \
+ tests/basic-file.sh \
+ tests/copy-to-and-from-file.sh \
+ tests/copy-to-and-from-multi-providers-file.sh \
+ tests/copy-to-and-from-multi-targets-file.sh \
+ tests/create-write-persist-file.sh \
+ tests/create-write-persist-remove-file.sh
 
 EXTRA_DIST += \
  tests/lorem.txt \

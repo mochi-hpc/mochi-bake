@@ -23,6 +23,7 @@
 #include "bake-provider.h"
 
 extern bake_backend g_bake_pmem_backend;
+extern bake_backend g_bake_file_backend;
 
 DECLARE_MARGO_RPC_HANDLER(bake_shutdown_ult)
 DECLARE_MARGO_RPC_HANDLER(bake_create_ult)
@@ -283,6 +284,8 @@ int bake_provider_add_storage_target(
     
     if(strcmp(backend_type, "pmem") == 0) {
         new_entry->backend = &g_bake_pmem_backend;
+    } else if(strcmp(backend_type, "file") == 0) {
+        new_entry->backend = &g_bake_file_backend;
     } else {
         fprintf(stderr, "ERROR: unknown backend type \"%s\"\n", backend_type);
         free(backend_type);
@@ -560,9 +563,29 @@ static void bake_create_write_persist_ult(hg_handle_t handle)
         goto finish;
     }
 
-    out.ret = target->backend->_create_write_persist_bulk(
-                        target->context, in.bulk_handle, src_addr,
-                        in.bulk_offset, in.bulk_size, &out.rid);
+    if(!target->backend->_create_write_persist_bulk)
+    {
+        /* If the backend does not provide a combination
+         * create_write_persist function, then issue constituent backend
+         * calls instead.
+         */
+        out.ret = target->backend->_create(target->context, in.region_size, &out.rid);
+        if(out.ret != BAKE_SUCCESS)
+            goto finish;
+        out.ret = target->backend->_write_bulk(target->context, out.rid,
+            0, in.bulk_size, in.bulk_handle, src_addr, in.bulk_offset);
+        if(out.ret != BAKE_SUCCESS)
+            goto finish;
+        out.ret = target->backend->_persist(target->context, out.rid,
+            0, in.region_size);
+    }
+    else
+    {
+        out.ret = target->backend->_create_write_persist_bulk(
+                            target->context, in.bulk_handle, src_addr,
+                            in.bulk_offset, in.bulk_size, &out.rid);
+    }
+
 finish:
     UNLOCK_PROVIDER;
     margo_addr_free(mid, src_addr);
@@ -583,8 +606,27 @@ static void bake_eager_create_write_persist_ult(hg_handle_t handle)
 
     memset(&out, 0, sizeof(out));
 
-    out.ret = target->backend->_create_write_persist_raw(
-                    target->context, in.buffer, in.size, &out.rid);
+    if(!target->backend->_create_write_persist_raw)
+    {
+        /* If the backend does not provide a combination
+         * create_write_persist function, then issue constituent backend
+         * calls instead.
+         */
+        out.ret = target->backend->_create(target->context, in.size, &out.rid);
+        if(out.ret != BAKE_SUCCESS)
+            goto finish;
+        out.ret = target->backend->_write_raw(target->context, out.rid,
+            0, in.size, in.buffer);
+        if(out.ret != BAKE_SUCCESS)
+            goto finish;
+        out.ret = target->backend->_persist(target->context, out.rid,
+            0, in.size);
+    }
+    else
+    {
+        out.ret = target->backend->_create_write_persist_raw(
+            target->context, in.buffer, in.size, &out.rid);
+    }
 
 finish:
     UNLOCK_PROVIDER;
@@ -951,31 +993,23 @@ static int set_conf_cb_pipeline_enabled(bake_provider_t provider,
     int ret;
     hg_return_t hret;
 
-    static int first_call = 1;
+    ret = sscanf(value, "%u", &provider->config.pipeline_enable);
+    if(ret != 1)
+        return BAKE_ERR_INVALID_ARG;
 
-    if(first_call) {
-
-        ret = sscanf(value, "%u", &provider->config.pipeline_enable);
-        if(ret != 1)
-            return BAKE_ERR_INVALID_ARG;
-
-        if(provider->config.pipeline_enable) {
-            hret = margo_bulk_poolset_create(
-                    provider->mid, 
-                    provider->config.pipeline_npools,
-                    provider->config.pipeline_nbuffers_per_pool,
-                    provider->config.pipeline_first_buffer_size,
-                    provider->config.pipeline_multiplier,
-                    HG_BULK_READWRITE,
-                    &(provider->poolset));
-            if(hret != 0)
-                return BAKE_ERR_MERCURY;
-        }
-        first_call = 0; // for now we only allow setting the parameter once
-        return BAKE_SUCCESS;
-    } else {
-        return BAKE_ERR_FORBIDDEN;
+    if(provider->config.pipeline_enable) {
+        hret = margo_bulk_poolset_create(
+                provider->mid, 
+                provider->config.pipeline_npools,
+                provider->config.pipeline_nbuffers_per_pool,
+                provider->config.pipeline_first_buffer_size,
+                provider->config.pipeline_multiplier,
+                HG_BULK_READWRITE,
+                &(provider->poolset));
+        if(hret != 0)
+            return BAKE_ERR_MERCURY;
     }
+    return BAKE_SUCCESS;
 }
 
 int bake_provider_set_conf(

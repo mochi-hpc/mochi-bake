@@ -66,6 +66,12 @@ LIBS="$MARGO_LIBS $LIBS"
 CPPFLAGS="$MARGO_CFLAGS $CPPFLAGS"
 CFLAGS="$MARGO_CFLAGS $CFLAGS"
 
+PKG_CHECK_MODULES([ABTIO],[abt-io],[],
+   [AC_MSG_ERROR([Could not find working abt-io installation!])])
+LIBS="$ABTIO_LIBS $LIBS"
+CPPFLAGS="$ABTIO_CFLAGS $CPPFLAGS"
+CFLAGS="$ABTIO_CFLAGS $CFLAGS"
+
 # NOTE: See README.md if the following does not work for you; some versions of
 # nvml/pmem install broken .pc files
 PKG_CHECK_MODULES([LIBPMEMOBJ],[libpmemobj],[],

@@ -683,6 +683,7 @@ int bake_create_write_persist(
     in.bti = bti;
     in.bulk_offset = 0;
     in.bulk_size = buf_size;
+    in.region_size = buf_size;
     in.remote_addr_str = NULL; /* set remote_addr to NULL to disable proxy write */
 
     hret = margo_bulk_create(provider->client->mid, 1, (void**)(&buf), &buf_size,
