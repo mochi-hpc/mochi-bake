@@ -563,9 +563,29 @@ static void bake_create_write_persist_ult(hg_handle_t handle)
         goto finish;
     }
 
-    out.ret = target->backend->_create_write_persist_bulk(
-                        target->context, in.bulk_handle, src_addr,
-                        in.bulk_offset, in.bulk_size, &out.rid);
+    if(!target->backend->_create_write_persist_bulk)
+    {
+        /* If the backend does not provide a combination
+         * create_write_persist function, then issue constituent backend
+         * calls instead.
+         */
+        out.ret = target->backend->_create(target->context, in.region_size, &out.rid);
+        if(out.ret != BAKE_SUCCESS)
+            goto finish;
+        out.ret = target->backend->_write_bulk(target->context, out.rid,
+            0, in.bulk_size, in.bulk_handle, src_addr, in.bulk_offset);
+        if(out.ret != BAKE_SUCCESS)
+            goto finish;
+        out.ret = target->backend->_persist(target->context, out.rid,
+            0, in.region_size);
+    }
+    else
+    {
+        out.ret = target->backend->_create_write_persist_bulk(
+                            target->context, in.bulk_handle, src_addr,
+                            in.bulk_offset, in.bulk_size, &out.rid);
+    }
+
 finish:
     UNLOCK_PROVIDER;
     margo_addr_free(mid, src_addr);
