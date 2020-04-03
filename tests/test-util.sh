@@ -12,7 +12,10 @@ if [ -z "$MKTEMP" ] ; then
     exit 1
 fi
 
-TMPDIR=/dev/shm
+# set TMPDIR to /dev/shm if unspecified
+if [ -z ${TMPDIR+x} ]; then
+    TMPDIR=/dev/shm
+fi
 export TMPDIR
 mkdir -p $TMPDIR
 TMPBASE=$(${MKTEMP} --tmpdir -d test-XXXXXX)
@@ -40,7 +43,7 @@ function test_start_servers ()
     # start daemons
     for i in `seq $nservers`
     do
-        src/bake-mkpool -s 100M $TMPBASE/svr-$i.dat
+        src/bake-mkpool -s 100M ${backend}${TMPBASE}/svr-$i.dat
         if [ $? -ne 0 ]; then
             exit 1
         fi
@@ -67,19 +70,26 @@ function test_start_servers_multi_providers ()
     nproviders=${2:-1}
     startwait=${3:-15}
     maxtime=${4:-120}
+    backend=${5:-"pmem:"}
 
     # start daemons
     for i in `seq $nservers`
     do
 	for j in `seq $nproviders`
 	do
-    	    src/bake-mkpool -s 100M $TMPBASE/svr-$i-prvd-$j.dat
+            src/bake-mkpool -s 100M ${backend}$TMPBASE/svr-$i-prvd-$j.dat
             if [ $? -ne 0 ]; then
                 exit 1
             fi
         done
 
-        run_to ${maxtime} src/bake-server-daemon -m providers -f $TMPBASE/svr-$i.addr na+sm $TMPBASE/svr-$i-prvd-*.dat &
+        targets=
+        datfiles=`ls $TMPBASE/svr-$i-prvd-*.dat`
+        for dat in ${datfiles[@]}; do
+            targets+=( "pmem:$dat" )
+        done
+
+        run_to ${maxtime} src/bake-server-daemon -m providers -f $TMPBASE/svr-$i.addr na+sm ${targets[@]} &
         if [ $? -ne 0 ]; then
             # TODO: this doesn't actually work; can't check return code of
             # something executing in background.  We have to rely on the
@@ -113,7 +123,13 @@ function test_start_servers_multi_targets ()
             fi
         done
 
-        run_to ${maxtime} src/bake-server-daemon -m targets -f $TMPBASE/svr-$i.addr na+sm $TMPBASE/svr-$i-tgt-*.dat &
+        targets=
+        datfiles=`ls $TMPBASE/svr-$i-tgt-*.dat`
+        for dat in ${datfiles[@]}; do
+            targets+=( "pmem:$dat" )
+        done
+
+        run_to ${maxtime} src/bake-server-daemon -m targets -f $TMPBASE/svr-$i.addr na+sm ${targets[@]} &
         if [ $? -ne 0 ]; then
             # TODO: this doesn't actually work; can't check return code of
             # something executing in background.  We have to rely on the
