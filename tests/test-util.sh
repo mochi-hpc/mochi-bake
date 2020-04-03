@@ -86,7 +86,7 @@ function test_start_servers_multi_providers ()
         targets=
         datfiles=`ls $TMPBASE/svr-$i-prvd-*.dat`
         for dat in ${datfiles[@]}; do
-            targets+=( "pmem:$dat" )
+            targets+=( "${backend}${dat}" )
         done
 
         run_to ${maxtime} src/bake-server-daemon -m providers -f $TMPBASE/svr-$i.addr na+sm ${targets[@]} &
@@ -111,6 +111,7 @@ function test_start_servers_multi_targets ()
     ntargets=${2:-1}
     startwait=${3:-15}
     maxtime=${4:-120}
+    backend=${5:-"pmem:"}
 
     # start daemons
     for i in `seq $nservers`
@@ -126,7 +127,7 @@ function test_start_servers_multi_targets ()
         targets=
         datfiles=`ls $TMPBASE/svr-$i-tgt-*.dat`
         for dat in ${datfiles[@]}; do
-            targets+=( "pmem:$dat" )
+            targets+=( "${backend}${dat}" )
         done
 
         run_to ${maxtime} src/bake-server-daemon -m targets -f $TMPBASE/svr-$i.addr na+sm ${targets[@]} &
