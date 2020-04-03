@@ -89,7 +89,7 @@ function test_start_servers_multi_providers ()
             targets+=( "${backend}${dat}" )
         done
 
-        run_to ${maxtime} src/bake-server-daemon -m providers -f $TMPBASE/svr-$i.addr na+sm ${targets[@]} &
+        run_to ${maxtime} src/bake-server-daemon -p -m providers -f $TMPBASE/svr-$i.addr na+sm ${targets[@]} &
         if [ $? -ne 0 ]; then
             # TODO: this doesn't actually work; can't check return code of
             # something executing in background.  We have to rely on the
@@ -130,7 +130,7 @@ function test_start_servers_multi_targets ()
             targets+=( "${backend}${dat}" )
         done
 
-        run_to ${maxtime} src/bake-server-daemon -m targets -f $TMPBASE/svr-$i.addr na+sm ${targets[@]} &
+        run_to ${maxtime} src/bake-server-daemon -p -m targets -f $TMPBASE/svr-$i.addr na+sm ${targets[@]} &
         if [ $? -ne 0 ]; then
             # TODO: this doesn't actually work; can't check return code of
             # something executing in background.  We have to rely on the
