@@ -8,12 +8,31 @@
 
 #include <assert.h>
 #include <margo.h>
+#include <margo-bulk-pool.h>
 #include <bake-client.h>
 #include "uthash.h"
 #include "bake-rpc.h"
 #include "bake-timing.h"
 
 #define BAKE_DEFAULT_EAGER_LIMIT 2048
+
+struct bake_client_conf
+{
+    unsigned intermed_enable;  /* intermediate buffering, yes or no */
+    unsigned intermed_npools;  /* number of preallocated buffer pools */
+    unsigned intermed_nbuffers_per_pool; /* buffers per buffer pool */
+    unsigned intermed_first_buffer_size; /* size of buffers in smallest pool */
+    unsigned intermed_multiplier;        /* factor size increase per pool */
+};
+
+struct bake_client_conf g_default_bake_client_conf =
+{
+    .intermed_enable = 1,
+    .intermed_npools = 4,
+    .intermed_nbuffers_per_pool = 32,
+    .intermed_first_buffer_size = 65536,
+    .intermed_multiplier = 4
+};
 
 /* Refers to a single Margo initialization, for now this is shared by
  * all remote BAKE targets.  In the future we probably need to support
@@ -40,6 +59,9 @@ struct bake_client
     hg_id_t bake_migrate_target_id;
 
     uint64_t num_provider_handles;
+
+    struct bake_client_conf config;
+    margo_bulk_poolset_t poolset; /* intermediate buffers, if used */
 };
 
 struct bake_provider_handle {
@@ -131,13 +153,31 @@ static int bake_client_register(bake_client_t client, margo_instance_id mid)
 
 int bake_client_init(margo_instance_id mid, bake_client_t* client)
 {
+    hg_return_t hret;
     bake_client_t c = (bake_client_t)calloc(1, sizeof(*c));
     if(!c) return BAKE_ERR_ALLOCATION;
 
     c->num_provider_handles = 0;
+    c->config = g_default_bake_client_conf;
 
     int ret = bake_client_register(c, mid);
     if(ret != BAKE_SUCCESS) return ret;
+
+    if(c->config.intermed_enable)
+    {
+        hret = margo_bulk_poolset_create(
+            c->mid,
+            c->config.intermed_npools,
+            c->config.intermed_nbuffers_per_pool,
+            c->config.intermed_first_buffer_size,
+            c->config.intermed_multiplier,
+            HG_BULK_READWRITE,
+            &(c->poolset));
+        if(hret != HG_SUCCESS)
+        {
+            return(BAKE_ERR_MERCURY);
+        }
+    }
 
     *client = c;
     return BAKE_SUCCESS;
@@ -150,6 +190,7 @@ int bake_client_finalize(bake_client_t client)
                 "[BAKE] Warning: %llu provider handles not released before bake_client_finalize was called\n",
                 (long long unsigned int)client->num_provider_handles);
     }
+    margo_bulk_poolset_destroy(client->poolset);
     free(client);
     return BAKE_SUCCESS;
 }
