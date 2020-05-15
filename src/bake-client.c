@@ -731,9 +731,14 @@ int bake_create_write_persist(
     in.bulk_handle = HG_BULK_NULL;
     bake_create_write_persist_out_t out;
     int ret;
+    hg_size_t poolset_max_size = 0;
+    void *local_bulk_ptr;
+    size_t tmp_buf_size;
+    hg_uint32_t tmp_count;
 
     if(buf_size <= provider->eager_limit)
         return(bake_eager_create_write_persist(provider, bti, buf, buf_size, rid));
+    margo_bulk_poolset_get_max(provider->client->poolset, &poolset_max_size);
 
     TIMERS_INITIALIZE("bulk_create","forward","end");
 
@@ -743,11 +748,32 @@ int bake_create_write_persist(
     in.region_size = buf_size;
     in.remote_addr_str = NULL; /* set remote_addr to NULL to disable proxy write */
 
-    hret = margo_bulk_create(provider->client->mid, 1, (void**)(&buf), &buf_size,
-        HG_BULK_READ_ONLY, &in.bulk_handle);
-    if(hret != HG_SUCCESS) {
-        ret = BAKE_ERR_MERCURY;
-        goto finish;
+    /* will this fit in an intermediate buffer (and is intermediate
+     * buffering enabled)?
+     */
+    if(buf_size <= poolset_max_size)
+    {
+        ret = margo_bulk_poolset_get(provider->client->poolset, buf_size, &in.bulk_handle);
+        if(ret != 0)
+        {
+            ret = BAKE_ERR_MERCURY;
+            goto finish;
+        }
+        ret = margo_bulk_access(in.bulk_handle, 0,
+            buf_size, HG_BULK_READWRITE, 1,
+            &local_bulk_ptr, &tmp_buf_size, &tmp_count);
+        /* the above should never fail */
+        assert(ret == 0);
+        memcpy(local_bulk_ptr, buf, buf_size);
+    }
+    else
+    {
+        hret = margo_bulk_create(provider->client->mid, 1, (void**)(&buf), &buf_size,
+            HG_BULK_READ_ONLY, &in.bulk_handle);
+        if(hret != HG_SUCCESS) {
+            ret = BAKE_ERR_MERCURY;
+            goto finish;
+        }
     }
 
     TIMERS_END_STEP(0);
@@ -785,7 +811,10 @@ finish:
         *rid = out.rid;
 
     margo_free_output(handle, &out);
-    margo_bulk_free(in.bulk_handle);
+    if(buf_size <= poolset_max_size)
+        margo_bulk_poolset_release(provider->client->poolset, in.bulk_handle);
+    else
+        margo_bulk_free(in.bulk_handle);
     margo_destroy(handle);
     TIMERS_END_STEP(2);
     TIMERS_FINALIZE();
