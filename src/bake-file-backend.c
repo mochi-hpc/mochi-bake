@@ -162,7 +162,9 @@ static int bake_file_backend_initialize(bake_provider_t provider,
     new_entry->log_fd = -1;
     const char *tmp;
     ptrdiff_t d;
+#if 0
     struct stat statbuf;
+#endif
 
     if(!provider->config.pipeline_enable)
     {
@@ -196,6 +198,7 @@ static int bake_file_backend_initialize(bake_provider_t provider,
         goto error_cleanup;
     }
 
+#if 0
     /* check size of log to see where to pick up with new entries */
     /* TODO: abt-io version of this fn */
     ret = fstat(new_entry->log_fd, &statbuf);
@@ -207,6 +210,11 @@ static int bake_file_backend_initialize(bake_provider_t provider,
     }
     ABT_mutex_create(&new_entry->log_offset_mutex);
     new_entry->log_offset = statbuf.st_size;
+#else
+    fprintf(stderr, "WARNING: this build will not preserve existing regions on server restart.\n");
+    ABT_mutex_create(&new_entry->log_offset_mutex);
+    new_entry->log_offset = BAKE_ALIGNMENT;
+#endif
 
     /* check to make sure the root is properly set */
     ret = posix_memalign((void**)(&new_entry->file_root),
@@ -277,53 +285,43 @@ static int bake_file_create(backend_context_t context,
 {
     bake_file_entry_t *entry = (bake_file_entry_t*)context;
     int ret;
-    void *zero_block;
-    file_region_id_t* frid = (file_region_id_t*)rid->data;
+    file_region_id_t* frid = NULL;
 
     assert(sizeof(file_region_id_t) <= BAKE_REGION_ID_DATA_SIZE);
 
     /* round up size for directio alignment */
     size = BAKE_ALIGN_UP(size);
 
-    frid->log_entry_size = size;
-    ABT_mutex_lock(entry->log_offset_mutex);
-    frid->log_entry_offset = entry->log_offset;
-    entry->log_offset += size;
-    ABT_mutex_unlock(entry->log_offset_mutex);
-
-    /* We write one empty block at the end of the log extent covered by this
-     * region.  The goal is to extend the log file length (if
-     * necessary) so that if the daemon crashes and restarts it will begin
-     * allocating at the correct offset rather than possibly reusing space
-     * that was promised to a previous region.
-     *
-     * Ideally this would just be a metadata update to the file system since
-     * we don't care about data contents in this range, but it's not clear
-     * that there is an fallocate() variant that will extend the file size
-     * without allocating blocks.  So we write a block and sync.
-     *
-     * We write a full block to make sure it will work with O_DIRECT.
+    /* store the region id in the log itself as a marker; must be aligned in
+     * memory so that we can write it with O_DIRECT
      */
-    ret = posix_memalign(&zero_block, BAKE_ALIGNMENT, BAKE_ALIGNMENT);
+    ret = posix_memalign((void**)&frid, BAKE_ALIGNMENT, BAKE_ALIGNMENT);
     if(ret != 0)
         return(BAKE_ERR_IO);
 
-    ret = abt_io_pwrite(entry->abtioi, entry->log_fd, zero_block,
-        BAKE_ALIGNMENT, entry->log_offset-BAKE_ALIGNMENT);
+    frid->log_entry_size = size;
+    ABT_mutex_lock(entry->log_offset_mutex);
+    frid->log_entry_offset = entry->log_offset + BAKE_ALIGNMENT;
+    entry->log_offset += size + BAKE_ALIGNMENT;
+    ABT_mutex_unlock(entry->log_offset_mutex);
+
+    ret = abt_io_pwrite(entry->abtioi, entry->log_fd, frid,
+        BAKE_ALIGNMENT, frid->log_entry_offset-BAKE_ALIGNMENT);
     if(ret != BAKE_ALIGNMENT)
     {
-        free(zero_block);
+        free(frid);
         return(BAKE_ERR_IO);
     }
 
     ret = abt_io_fdatasync(entry->abtioi, entry->log_fd);
     if(ret != 0)
     {
-        free(zero_block);
+        free(frid);
         return(BAKE_ERR_IO);
     }
 
-    free(zero_block);
+    memcpy(rid->data, frid, sizeof(*frid));
+    free(frid);
     return(BAKE_SUCCESS);
 }
 
