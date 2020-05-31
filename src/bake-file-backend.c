@@ -126,6 +126,16 @@ int bake_file_makepool(
         return(BAKE_ERR_IO);
     }
 
+    fprintf(stderr, "WARNING: this build pre-allocates a single on-disk file for storage.\n");
+    /* pre-allocate requested size */
+    ret = fallocate(fd, 0, 0, file_size);
+    if(ret < 0)
+    {
+        perror("fallocate");
+        close(fd);
+        return(BAKE_ERR_IO);
+    }
+
     /* we'll put a full block at the front of the file, the first bytes of
      * which will contain the bake_root_t
      */
@@ -141,6 +151,7 @@ int bake_file_makepool(
     {
         perror("write");
         free(root);
+        close(fd);
         return(BAKE_ERR_IO);
     }
     free(root);
