@@ -9,8 +9,8 @@ fi
 export TMPDIR="."
 source $srcdir/tests/test-util.sh
 
-# start 1 server with 2 providers, 2 second wait, 20s timeout
-test_start_servers_multi_providers 1 2 2 20 file:
+# start 1 server with 2 providers, 4 second wait, 20s timeout
+test_start_servers_multi_providers 1 2 4 20 file:
 
 # actual test case
 #####################

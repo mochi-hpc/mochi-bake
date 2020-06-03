@@ -9,8 +9,8 @@ fi
 export TMPDIR="."
 source $srcdir/tests/test-util.sh
 
-# start 1 server with 2 second wait, 20s timeout
-test_start_servers 1 2 20 file:
+# start 1 server with 4 second wait, 20s timeout
+test_start_servers 1 4 20 file:
 
 # actual test case
 #####################
