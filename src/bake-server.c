@@ -1,6 +1,6 @@
 /*
  * (C) 2015 The University of Chicago
- * 
+ *
  * See COPYRIGHT in top-level directory.
  */
 
@@ -10,6 +10,7 @@
 #include <libpmemobj.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <mochi-cfg.h>
 #include <margo.h>
 #include <margo-bulk-pool.h>
 #ifdef USE_REMI
@@ -42,15 +43,14 @@ DECLARE_MARGO_RPC_HANDLER(bake_remove_ult)
 DECLARE_MARGO_RPC_HANDLER(bake_migrate_region_ult)
 DECLARE_MARGO_RPC_HANDLER(bake_migrate_target_ult)
 
-/* TODO: support different parameters per provider instance */
-struct bake_provider_conf g_default_bake_provider_conf = 
-{
-    .pipeline_enable = 0,
-    .pipeline_npools = 4,
-    .pipeline_nbuffers_per_pool = 32,
-    .pipeline_first_buffer_size = 65536,
-    .pipeline_multiplier = 4
-};
+# define BAKE_PROV_DEFAULT_CFG \
+"{" \
+"    \"pipeline_enable\": 0," \
+"    \"pipeline_npools\": 4," \
+"    \"pipeline_nbuffers_per_pool\": 32," \
+"    \"pipeline_first_buffer_size\": 65536," \
+"    \"pipeline_multiplier\": 4" \
+"}"
 
 static bake_target_t* find_target_entry(bake_provider_t provider, bake_target_id_t target_id)
 {
@@ -60,7 +60,8 @@ static bake_target_t* find_target_entry(bake_provider_t provider, bake_target_id
 }
 
 static void bake_server_finalize_cb(void *data);
-
+static int set_conf_cb_pipeline_enabled(bake_provider_t provider,
+    int new_value);
 #ifdef USE_REMI
 static int bake_target_post_migration_callback(remi_fileset_t fileset, void* provider);
 #endif
@@ -71,7 +72,18 @@ int bake_provider_register(
         ABT_pool abt_pool,
         bake_provider_t* provider)
 {
+    return(bake_provider_register_json(mid, provider_id, abt_pool, provider, "{}"));
+}
+
+int bake_provider_register_json(
+        margo_instance_id mid,
+        uint16_t provider_id,
+        ABT_pool abt_pool,
+        bake_provider_t* provider,
+        const char* json_cfg_string)
+{
     bake_provider *tmp_provider;
+    int pipeline_enable;
     int ret;
     /* check if a provider with the same provider id already exists */
     {
@@ -96,7 +108,24 @@ int bake_provider_register(
         margo_get_handler_pool(mid, &(tmp_provider->handler_pool));
     }
 
-    tmp_provider->config = g_default_bake_provider_conf;
+    /* parse json config */
+    tmp_provider->prov_cfg = mochi_cfg_get_component(
+        json_cfg_string,
+        NULL,
+        BAKE_PROV_DEFAULT_CFG);
+    if(!tmp_provider->prov_cfg)
+    {
+        free(tmp_provider);
+        return BAKE_ERR_INVALID_ARG;
+    }
+    /* handle pipeline configuration if needed */
+    mochi_cfg_get_value_int(tmp_provider->prov_cfg, "pipeline_enable", &pipeline_enable);
+    ret = set_conf_cb_pipeline_enabled(tmp_provider, pipeline_enable);
+    if(ret != 0)
+    {
+        free(tmp_provider);
+        return BAKE_ERR_INVALID_ARG;
+    }
 
     /* Create rwlock */
     ret = ABT_rwlock_create(&(tmp_provider->lock));
@@ -987,29 +1016,50 @@ static int bake_target_post_migration_callback(remi_fileset_t fileset, void* uar
 
 #endif
 
-static int set_conf_cb_pipeline_enabled(bake_provider_t provider, 
-    const char* value)
+static int set_conf_cb_pipeline_enabled(bake_provider_t provider,
+    int new_value)
 {
-    int ret;
     hg_return_t hret;
 
-    ret = sscanf(value, "%u", &provider->config.pipeline_enable);
-    if(ret != 1)
-        return BAKE_ERR_INVALID_ARG;
+    if((!new_value && provider->poolset == MARGO_BULK_POOLSET_NULL)
+    || (new_value && provider->poolset != MARGO_BULK_POOLSET_NULL))
+    {
+        /* no change */
+        return(0);
+    }
 
-    if(provider->config.pipeline_enable) {
+    /* value is changing; we need to either create or destroy poolset */
+    if(new_value)
+    {
+        int npools, nbuffers_per_pool, first_buffer_size, multiplier;
+        mochi_cfg_get_value_int(provider->prov_cfg, "pipeline_npools", &npools);
+        mochi_cfg_get_value_int(provider->prov_cfg, "pipeline_nbuffers_per_pool", &nbuffers_per_pool);
+        mochi_cfg_get_value_int(provider->prov_cfg, "pipeline_first_buffer_size", &first_buffer_size);
+        mochi_cfg_get_value_int(provider->prov_cfg, "pipeline_multiplier", &multiplier);
+
         hret = margo_bulk_poolset_create(
-                provider->mid, 
-                provider->config.pipeline_npools,
-                provider->config.pipeline_nbuffers_per_pool,
-                provider->config.pipeline_first_buffer_size,
-                provider->config.pipeline_multiplier,
+                provider->mid,
+                npools,
+                nbuffers_per_pool,
+                first_buffer_size,
+                multiplier,
                 HG_BULK_READWRITE,
                 &(provider->poolset));
         if(hret != 0)
             return BAKE_ERR_MERCURY;
     }
+    else
+    {
+        margo_bulk_poolset_destroy(provider->poolset);
+        provider->poolset = MARGO_BULK_POOLSET_NULL;
+    }
+
     return BAKE_SUCCESS;
+}
+
+char* bake_provider_get_config(bake_provider_t provider)
+{
+    return(mochi_cfg_emit(provider->prov_cfg, NULL));
 }
 
 int bake_provider_set_conf(
@@ -1017,21 +1067,52 @@ int bake_provider_set_conf(
         const char *key,
         const char *value)
 {
-    /* TODO: make this more generic, manually issuing callbacks for
-     * particular keys right now.
+    int ret;
+
+    /* currently there are no provider level parameters that can be set
+     * arbitrarily once targets are active.
      */
-    if(strcmp(key, "pipeline_enabled") == 0)
-        return set_conf_cb_pipeline_enabled(provider, value);
-    else
-        return BAKE_ERR_INVALID_ARG;
+    if(provider->num_targets > 0)
+    {
+        fprintf(stderr, "Bake error: can't modify provider config once targets are active.\n");
+        return(BAKE_ERR_INVALID_ARG);
+    }
+
+    if(strcmp(key, "pipeline_enable") == 0)
+    {
+        ret = set_conf_cb_pipeline_enabled(provider, atoi(value));
+        if(ret < 0)
+            return(BAKE_ERR_INVALID_ARG);
+        mochi_cfg_set_value_int(provider->prov_cfg,
+            "pipeline_enable", atoi(value));
+        return(0);
+    }
+    if(strcmp(key, "pipeline_npools") == 0)
+    {
+        mochi_cfg_set_value_int(provider->prov_cfg,
+            "pipeline_npools", atoi(value));
+        return(0);
+    }
+    if(strcmp(key, "pipeline_nbuffers_per_pool") == 0)
+    {
+        mochi_cfg_set_value_int(provider->prov_cfg,
+            "pipeline_nbuffers_per_pool", atoi(value));
+        return(0);
+    }
+    if(strcmp(key, "pipeline_first_buffer_size") == 0)
+    {
+        mochi_cfg_set_value_int(provider->prov_cfg,
+            "pipeline_first_buffer_size", atoi(value));
+        return(0);
+    }
+    if(strcmp(key, "pipeline_multiplier") == 0)
+    {
+        mochi_cfg_set_value_int(provider->prov_cfg,
+            "pipeline_multiplier", atoi(value));
+        return(0);
+    }
+
+    /* unknown key, or at least one that cannot be modified at runtime */
+    return(-1);
 }
 
-int bake_target_set_conf(
-        bake_provider_t provider,
-        bake_target_id_t tid,
-        const char* key,
-        const char* value)
-{
-    // TODO
-    return 0;
-}

@@ -11,6 +11,7 @@
 #include <libpmemobj.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <mochi-cfg.h>
 #include <margo.h>
 #include <margo-bulk-pool.h>
 #ifdef USE_REMI
@@ -29,15 +30,6 @@ typedef struct
     UT_hash_handle hh;
 } bake_target_t;
 
-struct bake_provider_conf
-{   
-    unsigned pipeline_enable;  /* pipeline yes or no; implies intermediate buffering */
-    unsigned pipeline_npools;  /* number of preallocated buffer pools */
-    unsigned pipeline_nbuffers_per_pool; /* buffers per buffer pool */
-    unsigned pipeline_first_buffer_size; /* size of buffers in smallest pool */
-    unsigned pipeline_multiplier;        /* factor size increase per pool */
-};
-
 typedef struct bake_provider
 {
     margo_instance_id mid;
@@ -55,7 +47,7 @@ typedef struct bake_provider
     int owns_remi_provider;
 #endif
 
-    struct bake_provider_conf config; /* configuration for transfers */
+    json_t *prov_cfg; /* provider-specific configuration */
     margo_bulk_poolset_t poolset; /* intermediate buffers, if used */
 
     // list of RPC ids

@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.63])
-AC_INIT([bake], [0.3.4], [],[],[]) 
+AC_INIT([bake], [0.4], [],[],[]) 
 AC_CONFIG_MACRO_DIR([m4])
 LT_INIT
 
@@ -71,6 +71,12 @@ PKG_CHECK_MODULES([ABTIO],[abt-io],[],
 LIBS="$ABTIO_LIBS $LIBS"
 CPPFLAGS="$ABTIO_CFLAGS $CPPFLAGS"
 CFLAGS="$ABTIO_CFLAGS $CFLAGS"
+
+PKG_CHECK_MODULES([MOCHICFG],[mochi-cfg],[],
+   [AC_MSG_ERROR([Could not find working mochi-cfg installation!])])
+LIBS="$MOCHICFG_LIBS $LIBS"
+CPPFLAGS="$MOCHICFG_CFLAGS $CPPFLAGS"
+CFLAGS="$MOCHICFG_CFLAGS $CFLAGS"
 
 # NOTE: See README.md if the following does not work for you; some versions of
 # nvml/pmem install broken .pc files

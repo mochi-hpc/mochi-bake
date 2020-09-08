@@ -43,7 +43,6 @@ int bake_makepool(
  * @param[in] mid Margo instance identifier
  * @param[in] provider_id provider id
  * @param[in] pool Pool on which to run the RPC handlers
- * @param[in] target_name path to PMEM backend file
  * @param[out] provider resulting provider
  * @returns 0 on success, -1 otherwise
  */
@@ -52,6 +51,22 @@ int bake_provider_register(
         uint16_t provider_id,
         ABT_pool pool,
         bake_provider_t* provider);
+
+/**
+ * Initializes a BAKE provider with json configuration.
+ *
+ * @param[in] mid Margo instance identifier
+ * @param[in] provider_id provider id
+ * @param[in] pool Pool on which to run the RPC handlers
+ * @param[out] provider resulting provider
+ * @returns 0 on success, -1 otherwise
+ */
+int bake_provider_register_json(
+        margo_instance_id mid,
+        uint16_t provider_id,
+        ABT_pool pool,
+        bake_provider_t* provider,
+        const char* json_cfg_string);
 
 /**
  * @brief Deregisters and destroys the provider.
@@ -129,10 +144,13 @@ int bake_provider_list_storage_targets(
         bake_provider_t provider,
         bake_target_id_t* targets);
 
-/* TODO: the following configuration management functions would ideally be
- * split off into a dedicated component.  Treating this as a prototype for
- * now.
+/**
+ * Retrieves complete configuration for provider, encoded as json
+ *
+ * @param [in] provider
+ * @returns null terminated string that must be free'd by caller
  */
+char* bake_provider_get_config(bake_provider_t provider);
 
 /**
  * @brief Set configuration parameters as string key/value pairs

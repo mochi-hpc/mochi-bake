@@ -57,6 +57,7 @@ typedef struct {
     int log_fd;       /* file descriptor for log */
     off_t log_offset; /* next available unused offset in log */
     ABT_mutex log_offset_mutex; /* protects the above during concurrent region creation */
+    /* TODO: the abt-io instance should be per provider, not target */
     abt_io_instance_id abtioi;  /* abt-io instance used by this provider */
     bake_root_t* file_root;
     char* root;
@@ -163,12 +164,16 @@ static int bake_file_backend_initialize(bake_provider_t provider,
     const char *tmp;
     ptrdiff_t d;
     struct stat statbuf;
+    json_t *abt_io_cfg;
+    char *abt_io_cfg_string = NULL;
+    char *abt_io_cfg_string_new = NULL;
 
-    if(!provider->config.pipeline_enable)
+    if(provider->poolset == MARGO_BULK_POOLSET_NULL)
     {
         fprintf(stderr, "Error: The Bake file backend requires pipelining.\n");
-        fprintf(stderr, "   Enable pipelining with -p on the bake-server-daemon command line or\n");
-        fprintf(stderr, "   programmatically with bake_provider_set_conf(provider, \"pipeline_enabled\", \"1\")\n");
+        fprintf(stderr, "   Enable pipelining with -p on the bake-server-daemon command line,\n");
+        fprintf(stderr, "   programmatically with bake_provider_set_conf(provider, \"pipeline_enabled\", \"1\"), or\n");
+        fprintf(stderr, "   via json configuration.\n");
         return(BAKE_ERR_INVALID_ARG);
     }
 
@@ -179,14 +184,27 @@ static int bake_file_backend_initialize(bake_provider_t provider,
     d = tmp - path;
     new_entry->root = strndup(path, d);
 
-    /* initialize an abt-io instance just for this target */
-    /* TODO: make number of backing threads tunable */
-    new_entry->abtioi = abt_io_init(16);
+    /* Look for abt-io object within this provider config.  If
+     * present, use it.  If not then initialize abt-io with defaults.
+     */
+    mochi_cfg_get_object(provider->prov_cfg, "abt_io", &abt_io_cfg);
+    if(abt_io_cfg)
+        abt_io_cfg_string = mochi_cfg_emit(abt_io_cfg, "abt-io");
+    if(abt_io_cfg_string)
+        new_entry->abtioi = abt_io_init_json(abt_io_cfg_string);
+    else
+        new_entry->abtioi = abt_io_init(16);
     if(!new_entry->abtioi)
     {
         ret = BAKE_ERR_IO;
         goto error_cleanup;
     }
+
+    /* query resulting runtime configuration from abt-io, and update that
+     * sub-section of the provider configuration
+     */
+    abt_io_cfg_string_new = abt_io_get_config(new_entry->abtioi);
+    mochi_cfg_set_object_by_string(provider->prov_cfg, "abt-io", abt_io_cfg_string_new);
 
     new_entry->log_fd = abt_io_open(new_entry->abtioi,
         path, O_RDWR|O_DIRECT, 0);
@@ -583,13 +601,6 @@ static int bake_file_migrate_region(backend_context_t context,
     return BAKE_ERR_OP_UNSUPPORTED;
 }
 
-static int bake_file_set_conf(backend_context_t context,
-                              const char* key,
-                              const char* value)
-{
-    return 0;
-}
-
 #ifdef USE_REMI
 static int bake_file_create_fileset(backend_context_t context,
                                     remi_fileset_t* fileset)
@@ -638,7 +649,6 @@ bake_backend g_bake_file_backend = {
 #ifdef USE_REMI
     ._create_fileset            = bake_file_create_fileset,
 #endif
-    ._set_conf                  = bake_file_set_conf
 };
 
 /* common utility function for relaying data in read_bulk/write_bulk */
