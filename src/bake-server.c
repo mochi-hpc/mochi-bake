@@ -45,6 +45,7 @@ DECLARE_MARGO_RPC_HANDLER(bake_migrate_target_ult)
 
 # define BAKE_PROV_DEFAULT_CFG \
 "{" \
+"    \"version\": \"" PACKAGE_VERSION "\"," \
 "    \"pipeline_enable\": 0," \
 "    \"pipeline_npools\": 4," \
 "    \"pipeline_nbuffers_per_pool\": 32," \
