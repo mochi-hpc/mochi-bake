@@ -200,7 +200,7 @@ static int write_transfer_data(
     /* resolve addr, could be addr of rpc sender (normal case) or a third
      * party (proxy write)
      */
-    if(provider->config.pipeline_enable == 0)
+    if(provider->poolset == MARGO_BULK_POOLSET_NULL)
     {
         /* normal path; no pipeline or intermediate buffers */
 
@@ -700,13 +700,6 @@ error:
 }
 #endif
 
-static int bake_pmem_set_conf(backend_context_t context,
-                              const char* key,
-                              const char* value)
-{
-    return 0;
-}
-
 bake_backend g_bake_pmem_backend = {
     .name                       = "pmem",
     ._initialize                = bake_pmem_backend_initialize,
@@ -726,7 +719,6 @@ bake_backend g_bake_pmem_backend = {
 #ifdef USE_REMI
     ._create_fileset            = bake_pmem_create_fileset,
 #endif
-    ._set_conf                  = bake_pmem_set_conf
 };
 
 static void xfer_ult(void *_args)
