@@ -1,6 +1,6 @@
 /*
  * (C) 2016 The University of Chicago
- * 
+ *
  * See COPYRIGHT in top-level directory.
  */
 
@@ -15,10 +15,10 @@
 extern "C" {
 #endif
 
-#define BAKE_CLIENT_NULL ((bake_client_t)NULL)
+#define BAKE_CLIENT_NULL          ((bake_client_t)NULL)
 #define BAKE_PROVIDER_HANDLE_NULL ((bake_provider_handle_t)NULL)
 
-typedef struct bake_client* bake_client_t;
+typedef struct bake_client*          bake_client_t;
 typedef struct bake_provider_handle* bake_provider_handle_t;
 
 /**
@@ -56,11 +56,10 @@ int bake_client_finalize(bake_client_t client);
  *
  * @return BAKE_SUCCESS or corresponding error code.
  */
-int bake_provider_handle_create(
-        bake_client_t client,
-        hg_addr_t addr,
-        uint16_t provider_id,
-        bake_provider_handle_t* handle);
+int bake_provider_handle_create(bake_client_t           client,
+                                hg_addr_t               addr,
+                                uint16_t                provider_id,
+                                bake_provider_handle_t* handle);
 
 /**
  * Increment the reference counter of the provider handle
@@ -81,23 +80,24 @@ int bake_provider_handle_ref_incr(bake_provider_handle_t handle);
  * @param addr Returned address (ignored if NULL)
  * @param provider_id Returned provider id (ignored if NULL)
  *
- * @return BAKE_SUCCESS or corresponding error code. 
+ * @return BAKE_SUCCESS or corresponding error code.
  */
 int bake_provider_handle_get_info(bake_provider_handle_t handle,
-                                  bake_client_t *client,
-                                  hg_addr_t *addr,
-                                  uint16_t *provider_id);
+                                  bake_client_t*         client,
+                                  hg_addr_t*             addr,
+                                  uint16_t*              provider_id);
 
 /**
  * Get the limit (in bytes) bellow which this provider handle will use
- * eager mode (i.e. packing data into the RPC instead of using RDMA). 
+ * eager mode (i.e. packing data into the RPC instead of using RDMA).
  *
  * @param[in] handle provider handle
  * @param[out] limit limit
  *
  * @return BAKE_SUCCESS or corresponding error code.
  */
-int bake_provider_handle_get_eager_limit(bake_provider_handle_t handle, uint64_t* limit);
+int bake_provider_handle_get_eager_limit(bake_provider_handle_t handle,
+                                         uint64_t*              limit);
 
 /**
  * Set the limit (in bytes) bellow which this provider handle will use
@@ -108,7 +108,8 @@ int bake_provider_handle_get_eager_limit(bake_provider_handle_t handle, uint64_t
  *
  * @return BAKE_SUCCESS or corresponding error code.
  */
-int bake_provider_handle_set_eager_limit(bake_provider_handle_t handle, uint64_t limit);
+int bake_provider_handle_set_eager_limit(bake_provider_handle_t handle,
+                                         uint64_t               limit);
 
 /**
  * Decrement the reference counter of the provider handle,
@@ -128,16 +129,16 @@ int bake_provider_handle_release(bake_provider_handle_t handle);
  *
  * @param [in] provider provider handle
  * @param [in] max_targets maximum number of targets to retrieve
- * @param [out] bti array of BAKE target identifiers with enough space for max_targets
+ * @param [out] bti array of BAKE target identifiers with enough space for
+ * max_targets
  * @param [out] num_targets number of targets returned (at most max_targets)
  * @return BAKE_SUCCESS or corresponding error code.
  */
-int bake_probe(
-        bake_provider_handle_t provider,
-        uint64_t max_targets,
-        bake_target_id_t* bti,
-        uint64_t* num_targets);
-  
+int bake_probe(bake_provider_handle_t provider,
+               uint64_t               max_targets,
+               bake_target_id_t*      bti,
+               uint64_t*              num_targets);
+
 /**
  * Creates a bounded-size BAKE data region. The resulting region can be
  * written using BAKE write operations, and can be persisted (once writes
@@ -150,12 +151,11 @@ int bake_probe(
  * @param [out] rid identifier for new region
  * @return BAKE_SUCCESS or corresponding error code.
  */
-int bake_create(
-        bake_provider_handle_t provider,
-        bake_target_id_t bti,
-        uint64_t region_size,
-        bake_region_id_t *rid);
- 
+int bake_create(bake_provider_handle_t provider,
+                bake_target_id_t       bti,
+                uint64_t               region_size,
+                bake_region_id_t*      rid);
+
 /**
  * Writes into a BAKE region that was previously created with bake_create().
  * Result is not guaranteed to be persistent until explicit
@@ -171,13 +171,12 @@ int bake_create(
  * @param [in] buf_size size of local memory buffer to write
  * @return BAKE_SUCCESS or corresponding error code.
  */
-int bake_write(
-        bake_provider_handle_t provider,
-        bake_target_id_t bti,
-        bake_region_id_t rid,
-        uint64_t region_offset,
-        void const *buf,
-        uint64_t buf_size);
+int bake_write(bake_provider_handle_t provider,
+               bake_target_id_t       bti,
+               bake_region_id_t       rid,
+               uint64_t               region_offset,
+               void const*            buf,
+               uint64_t               buf_size);
 
 /**
  * Writes data into a previously created BAKE region like bake_write(),
@@ -197,18 +196,17 @@ int bake_write(
  * @param [in] size size to write from remote bulk handle
  * @return BAKE_SUCCESS or corresponding error code.
  */
-int bake_proxy_write(
-        bake_provider_handle_t provider,
-        bake_target_id_t bti,
-        bake_region_id_t rid,
-        uint64_t region_offset,
-        hg_bulk_t remote_bulk,
-        uint64_t remote_offset,
-        const char* remote_addr,
-        uint64_t size);
+int bake_proxy_write(bake_provider_handle_t provider,
+                     bake_target_id_t       bti,
+                     bake_region_id_t       rid,
+                     uint64_t               region_offset,
+                     hg_bulk_t              remote_bulk,
+                     uint64_t               remote_offset,
+                     const char*            remote_addr,
+                     uint64_t               size);
 
 /**
- * Persists a BAKE region. The region is considered immutable at this point 
+ * Persists a BAKE region. The region is considered immutable at this point
  * and reads may be performed on the region.
  *
  * @param [in] provider provider handle
@@ -217,12 +215,11 @@ int bake_proxy_write(
  * @param [in] size of the region
  * @return BAKE_SUCCESS or corresponding error code.
  */
-int bake_persist(
-        bake_provider_handle_t provider,
-        bake_target_id_t bti,
-        bake_region_id_t rid,
-        size_t offset,
-        size_t size);
+int bake_persist(bake_provider_handle_t provider,
+                 bake_target_id_t       bti,
+                 bake_region_id_t       rid,
+                 size_t                 offset,
+                 size_t                 size);
 
 /**
  * Creates a bounded-size BAKE region, writes data into it, and persists
@@ -235,12 +232,11 @@ int bake_persist(
  * @param [out] rid identifier for new region
  * @return BAKE_SUCCESS or corresponding error code.
  */
-int bake_create_write_persist(
-        bake_provider_handle_t provider,
-        bake_target_id_t bti,
-        void const *buf,
-        uint64_t buf_size,
-        bake_region_id_t *rid);
+int bake_create_write_persist(bake_provider_handle_t provider,
+                              bake_target_id_t       bti,
+                              void const*            buf,
+                              uint64_t               buf_size,
+                              bake_region_id_t*      rid);
 
 /**
  * Issues a bake_create_write_persist on behalf of a remote entity (remote_addr)
@@ -260,14 +256,13 @@ int bake_create_write_persist(
  * @param [out] rid identifier for new region
  * @return BAKE_SUCCESS or corresponding error code.
  */
-int bake_create_write_persist_proxy(
-        bake_provider_handle_t provider,
-        bake_target_id_t bti,
-        hg_bulk_t remote_bulk,
-        uint64_t remote_offset,
-        const char* remote_addr,
-        uint64_t size,
-        bake_region_id_t *rid);
+int bake_create_write_persist_proxy(bake_provider_handle_t provider,
+                                    bake_target_id_t       bti,
+                                    hg_bulk_t              remote_bulk,
+                                    uint64_t               remote_offset,
+                                    const char*            remote_addr,
+                                    uint64_t               size,
+                                    bake_region_id_t*      rid);
 
 /**
  * Checks the size of an existing BAKE region.
@@ -280,11 +275,10 @@ int bake_create_write_persist_proxy(
  * @param [out] size size of region
  * @return BAKE_SUCCESS or corresponding error code.
  */
-int bake_get_size(
-        bake_provider_handle_t provider,
-        bake_target_id_t bti,
-        bake_region_id_t rid,
-        uint64_t *size);
+int bake_get_size(bake_provider_handle_t provider,
+                  bake_target_id_t       bti,
+                  bake_region_id_t       rid,
+                  uint64_t*              size);
 
 /**
  * Gets the raw pointer of an existing BAKE region.
@@ -306,11 +300,10 @@ int bake_get_size(
  * @param [out] ptr pointer to the address of the data
  * @return BAKE_SUCCESS or corresponding error code.
  */
-int bake_get_data(
-        bake_provider_handle_t provider,
-        bake_target_id_t bti,
-        bake_region_id_t rid,
-        void** ptr);
+int bake_get_data(bake_provider_handle_t provider,
+                  bake_target_id_t       bti,
+                  bake_region_id_t       rid,
+                  void**                 ptr);
 
 /**
  * Reads from a BAKE region that was previously persisted with bake_persist().
@@ -326,14 +319,13 @@ int bake_get_data(
  * @param [out] bytes_read number of bytes effectively read into the buffer
  * @return BAKE_SUCCESS or corresponding error code.
  */
-int bake_read(
-        bake_provider_handle_t provider,
-        bake_target_id_t bti,
-        bake_region_id_t rid,
-        uint64_t region_offset,
-        void *buf,
-        uint64_t buf_size,
-        uint64_t* bytes_read);
+int bake_read(bake_provider_handle_t provider,
+              bake_target_id_t       bti,
+              bake_region_id_t       rid,
+              uint64_t               region_offset,
+              void*                  buf,
+              uint64_t               buf_size,
+              uint64_t*              bytes_read);
 
 /**
  * Reads data from a previously persisted BAKE region like bake_read(),
@@ -354,16 +346,15 @@ int bake_read(
  * @param [out] bytes_read number of bytes effectively read
  * @return BAKE_SUCCESS or corresponding error code.
  */
-int bake_proxy_read(
-        bake_provider_handle_t provider,
-        bake_target_id_t bti,
-        bake_region_id_t rid,
-        uint64_t region_offset,
-        hg_bulk_t remote_bulk,
-        uint64_t remote_offset,
-        const char* remote_addr,
-        uint64_t size,
-        uint64_t* bytes_read);
+int bake_proxy_read(bake_provider_handle_t provider,
+                    bake_target_id_t       bti,
+                    bake_region_id_t       rid,
+                    uint64_t               region_offset,
+                    hg_bulk_t              remote_bulk,
+                    uint64_t               remote_offset,
+                    const char*            remote_addr,
+                    uint64_t               size,
+                    uint64_t*              bytes_read);
 
 /**
  * @brief Requests the source provider to migrate a particular
@@ -383,16 +374,15 @@ int bake_proxy_read(
  *
  * @return BAKE_SUCCESS or corresponding error code.
  */
-int bake_migrate_region(
-        bake_provider_handle_t source,
-        bake_target_id_t source_bti,
-        bake_region_id_t source_rid,
-        size_t region_size,
-        int remove_source,
-        const char* dest_addr,
-        uint16_t dest_provider_id,
-        bake_target_id_t dest_target_id,
-        bake_region_id_t* dest_rid);
+int bake_migrate_region(bake_provider_handle_t source,
+                        bake_target_id_t       source_bti,
+                        bake_region_id_t       source_rid,
+                        size_t                 region_size,
+                        int                    remove_source,
+                        const char*            dest_addr,
+                        uint16_t               dest_provider_id,
+                        bake_target_id_t       dest_target_id,
+                        bake_region_id_t*      dest_rid);
 
 /**
  * @brief Migrates a full target from a provider to another.
@@ -405,25 +395,22 @@ int bake_migrate_region(
  *
  * @return BAKE_SUCCESS or corresponding error code.
  */
-int bake_migrate_target(
-        bake_provider_handle_t source,
-        bake_target_id_t src_target_id,
-        int remove_source,
-        const char* dest_addr,
-        uint16_t dest_provider_id,
-        const char* dest_root);
+int bake_migrate_target(bake_provider_handle_t source,
+                        bake_target_id_t       src_target_id,
+                        int                    remove_source,
+                        const char*            dest_addr,
+                        uint16_t               dest_provider_id,
+                        const char*            dest_root);
 
 /**
  * Shuts down a remote BAKE service (given an address).
  * This will shutdown all the providers on the target address.
- * 
+ *
  * @param [in] client BAKE client
- * @param [in] addr address of the server 
+ * @param [in] addr address of the server
  * @return BAKE_SUCCESS or corresponding error code.
  */
-int bake_shutdown_service(
-        bake_client_t client,
-        hg_addr_t addr);
+int bake_shutdown_service(bake_client_t client, hg_addr_t addr);
 
 /**
  * Issues a BAKE no-op operation.
@@ -435,16 +422,15 @@ int bake_noop(bake_provider_handle_t provider);
 
 /**
  * Removes a previously persisted BAKE region and frees its associated memory.
- * 
+ *
  * @param provider Provider in which to remove the region.
  * @param rid Region to remove.
  *
  * @return BAKE_SUCCESS or corresponding error code.
  */
-int bake_remove(
-        bake_provider_handle_t provider,
-        bake_target_id_t bti,
-        bake_region_id_t rid);
+int bake_remove(bake_provider_handle_t provider,
+                bake_target_id_t       bti,
+                bake_region_id_t       rid);
 
 #ifdef __cplusplus
 }

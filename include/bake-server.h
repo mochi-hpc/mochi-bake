@@ -1,6 +1,6 @@
 /*
  * (C) 2016 The University of Chicago
- * 
+ *
  * See COPYRIGHT in top-level directory.
  */
 
@@ -15,15 +15,15 @@
 extern "C" {
 #endif
 
-#define BAKE_ABT_POOL_DEFAULT ABT_POOL_NULL
+#define BAKE_ABT_POOL_DEFAULT    ABT_POOL_NULL
 #define BAKE_PROVIDER_ID_DEFAULT 0
-#define BAKE_PROVIDER_IGNORE NULL
+#define BAKE_PROVIDER_IGNORE     NULL
 
 typedef struct bake_provider* bake_provider_t;
 
 /**
  * Creates a BAKE pool to use for backend PMEM storage.
- * 
+ *
  * NOTE: This function must be called on a pool before the pool
  * can be passed to 'bake_provider_register'.
  *
@@ -32,10 +32,7 @@ typedef struct bake_provider* bake_provider_t;
  * @param[in] pool_mode mode of the created pool
  * @returns 0 on success, -1 otherwise
  */
-int bake_makepool(
-    const char *pool_name,
-    size_t pool_size,
-    mode_t pool_mode);
+int bake_makepool(const char* pool_name, size_t pool_size, mode_t pool_mode);
 
 /**
  * Initializes a BAKE provider.
@@ -47,11 +44,10 @@ int bake_makepool(
  * @param[out] provider resulting provider
  * @returns 0 on success, -1 otherwise
  */
-int bake_provider_register(
-        margo_instance_id mid,
-        uint16_t provider_id,
-        ABT_pool pool,
-        bake_provider_t* provider);
+int bake_provider_register(margo_instance_id mid,
+                           uint16_t          provider_id,
+                           ABT_pool          pool,
+                           bake_provider_t*  provider);
 
 /**
  * @brief Deregisters and destroys the provider.
@@ -60,8 +56,7 @@ int bake_provider_register(
  *
  * @return 0 on success, -1 otherwise.
  */
-int bake_provider_destroy(
-        bake_provider_t provider);
+int bake_provider_destroy(bake_provider_t provider);
 
 /**
  * Makes the provider start managing a target.
@@ -75,10 +70,9 @@ int bake_provider_destroy(
  *
  * @return 0 on success, -1 on failure
  */
-int bake_provider_add_storage_target(
-        bake_provider_t provider,
-        const char *target_name,
-        bake_target_id_t* target_id);
+int bake_provider_add_storage_target(bake_provider_t   provider,
+                                     const char*       target_name,
+                                     bake_target_id_t* target_id);
 
 /**
  * Makes the provider stop managing a target.
@@ -88,9 +82,8 @@ int bake_provider_add_storage_target(
  *
  * @return 0 on success, -1 on failure
  */
-int bake_provider_remove_storage_target(
-        bake_provider_t provider,
-        bake_target_id_t target_id);
+int bake_provider_remove_storage_target(bake_provider_t  provider,
+                                        bake_target_id_t target_id);
 
 /**
  * Removes all the targets associated with a provider.
@@ -99,8 +92,7 @@ int bake_provider_remove_storage_target(
  *
  * @return 0 on success, -1 on failure
  */
-int bake_provider_remove_all_storage_targets(
-        bake_provider_t provider);
+int bake_provider_remove_all_storage_targets(bake_provider_t provider);
 
 /**
  * Returns the number of targets that this provider manages.
@@ -110,9 +102,8 @@ int bake_provider_remove_all_storage_targets(
  *
  * @return 0 on success, -1 on failure
  */
-int bake_provider_count_storage_targets(
-        bake_provider_t provider,
-        uint64_t* num_targets);
+int bake_provider_count_storage_targets(bake_provider_t provider,
+                                        uint64_t*       num_targets);
 
 /**
  * List the target ids of the targets managed by this provider.
@@ -125,9 +116,8 @@ int bake_provider_count_storage_targets(
  *
  * @return 0 on success, -1 on failure
  */
-int bake_provider_list_storage_targets(
-        bake_provider_t provider,
-        bake_target_id_t* targets);
+int bake_provider_list_storage_targets(bake_provider_t   provider,
+                                       bake_target_id_t* targets);
 
 /* TODO: the following configuration management functions would ideally be
  * split off into a dedicated component.  Treating this as a prototype for
@@ -143,10 +133,9 @@ int bake_provider_list_storage_targets(
  *
  * @return 0 on success, -1 on failure
  */
-int bake_provider_set_conf(
-        bake_provider_t provider,
-        const char *key,
-        const char *value);
+int bake_provider_set_conf(bake_provider_t provider,
+                           const char*     key,
+                           const char*     value);
 
 /**
  * @brief Set configuration parameters for a target.
@@ -158,11 +147,10 @@ int bake_provider_set_conf(
  *
  * @return 0 on success, -1 on failure
  */
-int bake_target_set_conf(
-        bake_provider_t provider,
-        bake_target_id_t tid,
-        const char* key,
-        const char* value);
+int bake_target_set_conf(bake_provider_t  provider,
+                         bake_target_id_t tid,
+                         const char*      key,
+                         const char*      value);
 
 #ifdef __cplusplus
 }

@@ -13,29 +13,26 @@
  * Base64 index table.
  */
 
-static const char b64_table[] = {
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
-    'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
-    'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
-    'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f',
-    'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n',
-    'o', 'p', 'q', 'r', 's', 't', 'u', 'v',
-    'w', 'x', 'y', 'z', '0', '1', '2', '3',
-    '4', '5', '6', '7', '8', '9', '+', '/'
-};
+static const char b64_table[]
+    = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+       'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+       'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
+       'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+       '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '/'};
 
-static unsigned char *
-b64_decode_ex (const char *src, size_t len, size_t *decsize) {
-    int i = 0;
-    int j = 0;
-    int l = 0;
-    size_t size = 0;
-    unsigned char *dec = NULL;
-    unsigned char buf[3];
-    unsigned char tmp[4];
+static unsigned char*
+b64_decode_ex(const char* src, size_t len, size_t* decsize)
+{
+    int            i    = 0;
+    int            j    = 0;
+    int            l    = 0;
+    size_t         size = 0;
+    unsigned char* dec  = NULL;
+    unsigned char  buf[3];
+    unsigned char  tmp[4];
 
     // alloc
-    dec = (unsigned char *) malloc(1);
+    dec = (unsigned char*)malloc(1);
     if (NULL == dec) { return NULL; }
 
     // parse until end of source
@@ -66,11 +63,9 @@ b64_decode_ex (const char *src, size_t len, size_t *decsize) {
             buf[2] = ((tmp[2] & 0x3) << 6) + tmp[3];
 
             // write decoded buffer to `dec'
-            dec = (unsigned char *) realloc(dec, size + 3);
-            if (dec != NULL){
-                for (i = 0; i < 3; ++i) {
-                    dec[size++] = buf[i];
-                }
+            dec = (unsigned char*)realloc(dec, size + 3);
+            if (dec != NULL) {
+                for (i = 0; i < 3; ++i) { dec[size++] = buf[i]; }
             } else {
                 return NULL;
             }
@@ -83,9 +78,7 @@ b64_decode_ex (const char *src, size_t len, size_t *decsize) {
     // remainder
     if (i > 0) {
         // fill `tmp' with `\0' at most 4 times
-        for (j = i; j < 4; ++j) {
-            tmp[j] = '\0';
-        }
+        for (j = i; j < 4; ++j) { tmp[j] = '\0'; }
 
         // translate remainder
         for (j = 0; j < 4; ++j) {
@@ -104,33 +97,29 @@ b64_decode_ex (const char *src, size_t len, size_t *decsize) {
         buf[2] = ((tmp[2] & 0x3) << 6) + tmp[3];
 
         // write remainer decoded buffer to `dec'
-        dec = (unsigned char *) realloc(dec, size + (i - 1));
-        if (dec != NULL){
-            for (j = 0; (j < i - 1); ++j) {
-                dec[size++] = buf[j];
-            }
+        dec = (unsigned char*)realloc(dec, size + (i - 1));
+        if (dec != NULL) {
+            for (j = 0; (j < i - 1); ++j) { dec[size++] = buf[j]; }
         } else {
             return NULL;
         }
     }
 
     // Make sure we have enough space to add '\0' character at end.
-    dec = (unsigned char *) realloc(dec, size + 1);
-    if (dec != NULL){
+    dec = (unsigned char*)realloc(dec, size + 1);
+    if (dec != NULL) {
         dec[size] = '\0';
     } else {
         return NULL;
     }
 
     // Return back the size of decoded string if demanded.
-    if (decsize != NULL) {
-        *decsize = size;
-    }
+    if (decsize != NULL) { *decsize = size; }
 
     return dec;
 }
 
-unsigned char *
-bake_b64_decode (const char *src, size_t len) {
+unsigned char* bake_b64_decode(const char* src, size_t len)
+{
     return b64_decode_ex(src, len, NULL);
 }

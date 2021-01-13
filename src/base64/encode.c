@@ -10,31 +10,27 @@
 #include "b64.h"
 
 /**
-   * Base64 index table.
-    */
+ * Base64 index table.
+ */
 
-static const char b64_table[] = {
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
-    'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
-    'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
-    'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f',
-    'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n',
-    'o', 'p', 'q', 'r', 's', 't', 'u', 'v',
-    'w', 'x', 'y', 'z', '0', '1', '2', '3',
-    '4', '5', '6', '7', '8', '9', '+', '/'
-};
+static const char b64_table[]
+    = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+       'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+       'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
+       'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+       '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '/'};
 
-char *
-bake_b64_encode (const unsigned char *src, size_t len) {
-    int i = 0;
-    int j = 0;
-    char *enc = NULL;
-    size_t size = 0;
+char* bake_b64_encode(const unsigned char* src, size_t len)
+{
+    int           i    = 0;
+    int           j    = 0;
+    char*         enc  = NULL;
+    size_t        size = 0;
     unsigned char buf[4];
     unsigned char tmp[3];
 
     // alloc
-    enc = (char *) malloc(1);
+    enc = (char*)malloc(1);
     if (NULL == enc) { return NULL; }
 
     // parse until end of source
@@ -53,10 +49,8 @@ bake_b64_encode (const unsigned char *src, size_t len) {
             // then translate each encoded buffer
             // part by index from the base 64 index table
             // into `enc' unsigned char array
-            enc = (char *) realloc(enc, size + 4);
-            for (i = 0; i < 4; ++i) {
-                enc[size++] = b64_table[buf[i]];
-            }
+            enc = (char*)realloc(enc, size + 4);
+            for (i = 0; i < 4; ++i) { enc[size++] = b64_table[buf[i]]; }
 
             // reset index
             i = 0;
@@ -66,9 +60,7 @@ bake_b64_encode (const unsigned char *src, size_t len) {
     // remainder
     if (i > 0) {
         // fill `tmp' with `\0' at most 3 times
-        for (j = i; j < 3; ++j) {
-            tmp[j] = '\0';
-        }
+        for (j = i; j < 3; ++j) { tmp[j] = '\0'; }
 
         // perform same codec as above
         buf[0] = (tmp[0] & 0xfc) >> 2;
@@ -78,20 +70,20 @@ bake_b64_encode (const unsigned char *src, size_t len) {
 
         // perform same write to `enc` with new allocation
         for (j = 0; (j < i + 1); ++j) {
-            enc = (char *) realloc(enc, size + 1);
+            enc         = (char*)realloc(enc, size + 1);
             enc[size++] = b64_table[buf[j]];
         }
 
         // while there is still a remainder
         // append `=' to `enc'
         while ((i++ < 3)) {
-            enc = (char *) realloc(enc, size + 1);
+            enc         = (char*)realloc(enc, size + 1);
             enc[size++] = '=';
         }
     }
 
     // Make sure we have enough space to add '\0' character at end.
-    enc = (char *) realloc(enc, size + 1);
+    enc       = (char*)realloc(enc, size + 1);
     enc[size] = '\0';
 
     return enc;
