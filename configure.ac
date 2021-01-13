@@ -86,6 +86,12 @@ LIBS="$UUID_LIBS $LIBS"
 CPPFLAGS="$UUID_CFLAGS $CPPFLAGS"
 CFLAGS="$UUID_CFLAGS $CFLAGS"
 
+PKG_CHECK_MODULES([JSONC],[json-c],[],
+   [AC_MSG_ERROR([Could not find working json-c installation!])])
+LIBS="$JSONC_LIBS $LIBS"
+CPPFLAGS="$JSONC_CFLAGS $CPPFLAGS"
+CFLAGS="$JSONC_CFLAGS $CFLAGS"
+
 AC_ARG_ENABLE(remi,
         [AS_HELP_STRING([--enable-remi],[Enable REMI (migration) support @<:@default=no@:>@])],
         [case "${enableval}" in
