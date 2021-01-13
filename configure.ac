@@ -117,6 +117,27 @@ fi
 AC_SUBST(USE_REMI)
 AC_SUBST(REMI_PKG)
 
+AC_ARG_ENABLE(bedrock,
+        [AS_HELP_STRING([--enable-bedrock],[Enable bedrock library support @<:@default=no@:>@])],
+        [case "${enableval}" in
+         yes) enable_bedrock="yes" ;;
+         no) enable_bedrock="no" ;;
+         *) AC_MSG_ERROR(bad value ${enableval} for --enable-bedrock) ;;
+ esac],
+ [enable_bedrock="no"]
+ )
+AM_CONDITIONAL(ENABLE_BEDROCK, test x$enable_bedrock = xyes)
+if test "$enable_bedrock" = "yes"; then
+        PKG_CHECK_MODULES(BEDROCK, bedrock-server)
+        AC_DEFINE(USE_BEDROCK, 1, [BEDROCK support enabled.])
+        USE_BEDROCK=1
+        CPPFLAGS="$BEDROCK_CFLAGS $CPPFLAGS"
+        CFLAGS="$BEDROCK_CFLAGS $CFLAGS"
+else
+        USE_BEDROCK=0
+fi
+AC_SUBST(USE_BEDROCK)
+
 AC_ARG_ENABLE(benchmark,
               [AS_HELP_STRING([--enable-benchmark],[Build Bake benchmark @<:@default=no@:>@])],
               [case "${enableval}" in
