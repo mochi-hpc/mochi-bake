@@ -40,7 +40,7 @@ int parse_size(char *str, size_t *size_out)
     int i;
     int ret;
 
-    ret = sscanf(str, "%zu%2s", &size, suff);
+    ret = sscanf(str, "%zu%1s", &size, suff);
     if(ret == 1)
     {
         *size_out = size;
