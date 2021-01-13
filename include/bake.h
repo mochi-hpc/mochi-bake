@@ -29,8 +29,9 @@ typedef struct {
 #define BAKE_SUCCESS         0    /* Success */
 #define BAKE_ERR_ALLOCATION  (-1) /* Error allocating something */
 #define BAKE_ERR_INVALID_ARG (-2) /* An argument is invalid */
-#define BAKE_ERR_MERCURY     (-3) /* An error happened calling a Mercury function \
-                                   */
+#define BAKE_ERR_MERCURY                                 \
+    (-3) /* An error happened calling a Mercury function \
+          */
 #define BAKE_ERR_ARGOBOTS \
     (-4)                   /* An error happened calling an Argobots function */
 #define BAKE_ERR_PMEM (-5) /* An error happened calling a pmem function */
