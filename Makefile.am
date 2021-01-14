@@ -36,6 +36,10 @@ AM_CXXFLAGS = $(AM_CFLAGS)
 lib_LTLIBRARIES = src/libbake-client.la src/libbake-server.la
 src_libbake_client_la_SOURCES =
 src_libbake_server_la_SOURCES =
+if ENABLE_BEDROCK
+lib_LTLIBRARIES += src/libbake-bedrock.la
+src_libbake_bedrock_la_SOURCES =
+endif
 
 LDADD = src/libbake-client.la src/libbake-server.la
 
