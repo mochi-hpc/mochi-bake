@@ -6,7 +6,7 @@ bin_SCRIPTS =
 noinst_PROGRAMS =
 noinst_HEADERS =
 TESTS =
-XFAIL_TESTS = 
+XFAIL_TESTS =
 check_PROGRAMS =
 EXTRA_PROGRAMS =
 CLEANFILES = $(bin_SCRIPTS)
@@ -23,7 +23,7 @@ include_HEADERS = include/bake.h\
 TESTS_ENVIRONMENT =
 
 EXTRA_DIST += \
- prepare.sh 
+ prepare.sh
 
 AM_CPPFLAGS = -I$(top_srcdir)/include
 
