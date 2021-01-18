@@ -158,6 +158,7 @@ int main(int argc, char** argv)
             bake_target_id_t               tid;
             struct bake_provider_init_info bpargs           = {0};
             char                           json_config[256] = {0};
+            char*                          show_conf        = NULL;
 
             if (opts.pipeline_enabled) {
                 sprintf(json_config, "{\"pipeline_enable\": true}");
@@ -183,6 +184,11 @@ int main(int argc, char** argv)
 
             printf("Provider %d managing new target at multiplex id %d\n", i,
                    i + 1);
+            printf("Bake provider config:\n");
+            printf("=====================\n");
+            show_conf = bake_provider_get_config(provider);
+            printf("%s\n", show_conf);
+            free(show_conf);
         }
 
     } else {
@@ -191,6 +197,7 @@ int main(int argc, char** argv)
         bake_provider_t                provider;
         struct bake_provider_init_info bpargs           = {0};
         char                           json_config[256] = {0};
+        char*                          show_conf        = NULL;
 
         if (opts.pipeline_enabled) {
             sprintf(json_config, "{\"pipeline_enable\": true}");
@@ -218,6 +225,11 @@ int main(int argc, char** argv)
 
             printf("Provider 0 managing new target at multiplex id %d\n", 1);
         }
+        printf("Bake provider config:\n");
+        printf("=====================\n");
+        show_conf = bake_provider_get_config(provider);
+        printf("%s\n", show_conf);
+        free(show_conf);
     }
 
     /* suspend until the BAKE server gets a shutdown signal from the client */

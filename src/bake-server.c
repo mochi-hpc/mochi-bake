@@ -1071,3 +1071,11 @@ static int validate_and_complete_config(struct json_object* _config,
 
     return (0);
 }
+
+char* bake_provider_get_config(bake_provider_t provider)
+{
+    const char* content = json_object_to_json_string_ext(
+        provider->json_cfg,
+        JSON_C_TO_STRING_PRETTY | JSON_C_TO_STRING_NOSLASHESCAPE);
+    return strdup(content);
+}

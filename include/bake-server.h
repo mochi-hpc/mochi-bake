@@ -128,6 +128,14 @@ int bake_provider_count_storage_targets(bake_provider_t provider,
 int bake_provider_list_storage_targets(bake_provider_t   provider,
                                        bake_target_id_t* targets);
 
+/**
+ * Retrieves complete configuration of bake provider, encoded as json
+ *
+ * @param [in] provider bake provider
+ * @returns null terminated string that must be free'd by caller
+ */
+char* bake_provider_get_config(bake_provider_t provider);
+
 #ifdef __cplusplus
 }
 #endif
