@@ -567,13 +567,6 @@ static int bake_file_migrate_region(backend_context_t context,
     return BAKE_ERR_OP_UNSUPPORTED;
 }
 
-static int bake_file_set_conf(backend_context_t context,
-                              const char*       key,
-                              const char*       value)
-{
-    return 0;
-}
-
 #ifdef USE_REMI
 static int bake_file_create_fileset(backend_context_t context,
                                     remi_fileset_t*   fileset)
@@ -603,26 +596,26 @@ error:
 }
 #endif
 
-bake_backend g_bake_file_backend
-    = {.name                       = "file",
-       ._initialize                = bake_file_backend_initialize,
-       ._finalize                  = bake_file_backend_finalize,
-       ._create                    = bake_file_create,
-       ._write_raw                 = bake_file_write_raw,
-       ._write_bulk                = bake_file_write_bulk,
-       ._read_raw                  = bake_file_read_raw,
-       ._read_bulk                 = bake_file_read_bulk,
-       ._persist                   = bake_file_persist,
-       ._create_write_persist_raw  = NULL, /* use default implementation */
-       ._create_write_persist_bulk = NULL, /* use default implementation */
-       ._get_region_size           = bake_file_get_region_size,
-       ._get_region_data           = bake_file_get_region_data,
-       ._remove                    = bake_file_remove,
-       ._migrate_region            = bake_file_migrate_region,
+bake_backend g_bake_file_backend = {
+    .name                       = "file",
+    ._initialize                = bake_file_backend_initialize,
+    ._finalize                  = bake_file_backend_finalize,
+    ._create                    = bake_file_create,
+    ._write_raw                 = bake_file_write_raw,
+    ._write_bulk                = bake_file_write_bulk,
+    ._read_raw                  = bake_file_read_raw,
+    ._read_bulk                 = bake_file_read_bulk,
+    ._persist                   = bake_file_persist,
+    ._create_write_persist_raw  = NULL, /* use default implementation */
+    ._create_write_persist_bulk = NULL, /* use default implementation */
+    ._get_region_size           = bake_file_get_region_size,
+    ._get_region_data           = bake_file_get_region_data,
+    ._remove                    = bake_file_remove,
+    ._migrate_region            = bake_file_migrate_region,
 #ifdef USE_REMI
-       ._create_fileset = bake_file_create_fileset,
+    ._create_fileset = bake_file_create_fileset,
 #endif
-       ._set_conf = bake_file_set_conf};
+};
 
 /* common utility function for relaying data in read_bulk/write_bulk */
 static int transfer_data(bake_file_entry_t* entry,

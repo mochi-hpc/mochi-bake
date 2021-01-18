@@ -673,33 +673,26 @@ error:
 }
 #endif
 
-static int bake_pmem_set_conf(backend_context_t context,
-                              const char*       key,
-                              const char*       value)
-{
-    return 0;
-}
-
-bake_backend g_bake_pmem_backend
-    = {.name                       = "pmem",
-       ._initialize                = bake_pmem_backend_initialize,
-       ._finalize                  = bake_pmem_backend_finalize,
-       ._create                    = bake_pmem_create,
-       ._write_raw                 = bake_pmem_write_raw,
-       ._write_bulk                = bake_pmem_write_bulk,
-       ._read_raw                  = bake_pmem_read_raw,
-       ._read_bulk                 = bake_pmem_read_bulk,
-       ._persist                   = bake_pmem_persist,
-       ._create_write_persist_raw  = bake_pmem_create_write_persist_raw,
-       ._create_write_persist_bulk = bake_pmem_create_write_persist_bulk,
-       ._get_region_size           = bake_pmem_get_region_size,
-       ._get_region_data           = bake_pmem_get_region_data,
-       ._remove                    = bake_pmem_remove,
-       ._migrate_region            = bake_pmem_migrate_region,
+bake_backend g_bake_pmem_backend = {
+    .name                       = "pmem",
+    ._initialize                = bake_pmem_backend_initialize,
+    ._finalize                  = bake_pmem_backend_finalize,
+    ._create                    = bake_pmem_create,
+    ._write_raw                 = bake_pmem_write_raw,
+    ._write_bulk                = bake_pmem_write_bulk,
+    ._read_raw                  = bake_pmem_read_raw,
+    ._read_bulk                 = bake_pmem_read_bulk,
+    ._persist                   = bake_pmem_persist,
+    ._create_write_persist_raw  = bake_pmem_create_write_persist_raw,
+    ._create_write_persist_bulk = bake_pmem_create_write_persist_bulk,
+    ._get_region_size           = bake_pmem_get_region_size,
+    ._get_region_data           = bake_pmem_get_region_data,
+    ._remove                    = bake_pmem_remove,
+    ._migrate_region            = bake_pmem_migrate_region,
 #ifdef USE_REMI
-       ._create_fileset = bake_pmem_create_fileset,
+    ._create_fileset = bake_pmem_create_fileset,
 #endif
-       ._set_conf = bake_pmem_set_conf};
+};
 
 static void xfer_ult(void* _args)
 {

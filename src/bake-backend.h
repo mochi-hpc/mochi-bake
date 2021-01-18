@@ -92,10 +92,6 @@ typedef int (*bake_create_fileset_fn)(backend_context_t context,
                                       remi_fileset_t*   fileset);
 #endif
 
-typedef int (*bake_set_conf_fn)(backend_context_t context,
-                                const char*       key,
-                                const char*       value);
-
 typedef struct bake_backend {
     const char*                       name;
     bake_backend_initialize_fn        _initialize;
@@ -115,7 +111,6 @@ typedef struct bake_backend {
 #ifdef USE_REMI
     bake_create_fileset_fn _create_fileset;
 #endif
-    bake_set_conf_fn _set_conf;
 } bake_backend;
 
 typedef bake_backend* bake_backend_t;
