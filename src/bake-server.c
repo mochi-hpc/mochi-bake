@@ -22,6 +22,7 @@
 #include "bake-rpc.h"
 #include "bake-timing.h"
 #include "bake-provider.h"
+#include "bake-macros.h"
 
 extern bake_backend g_bake_pmem_backend;
 extern bake_backend g_bake_file_backend;
@@ -43,20 +44,13 @@ DECLARE_MARGO_RPC_HANDLER(bake_remove_ult)
 DECLARE_MARGO_RPC_HANDLER(bake_migrate_region_ult)
 DECLARE_MARGO_RPC_HANDLER(bake_migrate_target_ult)
 
-/* TODO: support different parameters per provider instance */
-struct bake_provider_conf g_default_bake_provider_conf
-    = {.pipeline_enable            = 0,
-       .pipeline_npools            = 4,
-       .pipeline_nbuffers_per_pool = 32,
-       .pipeline_first_buffer_size = 65536,
-       .pipeline_multiplier        = 4};
-
 /**
  * Validates the format of the configuration and fills default values
  * if they are not provided
  */
 static int validate_and_complete_config(struct json_object* _config,
                                         ABT_pool            _progress_pool);
+static int setup_poolset(bake_provider_t provider);
 
 static bake_target_t* find_target_entry(bake_provider_t  provider,
                                         bake_target_id_t target_id)
@@ -131,6 +125,8 @@ int bake_provider_register(margo_instance_id                     mid,
     tmp_provider = calloc(1, sizeof(*tmp_provider));
     if (!tmp_provider) return BAKE_ERR_ALLOCATION;
 
+    tmp_provider->json_cfg = config;
+
     tmp_provider->mid = mid;
     if (args.rpc_pool != NULL)
         tmp_provider->handler_pool = args.rpc_pool;
@@ -138,7 +134,15 @@ int bake_provider_register(margo_instance_id                     mid,
         margo_get_handler_pool(mid, &(tmp_provider->handler_pool));
     }
 
-    tmp_provider->config = g_default_bake_provider_conf;
+    ret = setup_poolset(tmp_provider);
+    if (ret != 0) {
+        fprintf(stderr, "Could not create poolset for pipelining");
+        json_object_put(config);
+        free(tmp_provider);
+        return ret;
+    }
+
+    /* create buffer poolset if needed for config */
 
     /* Create rwlock */
     ret = ABT_rwlock_create(&(tmp_provider->lock));
@@ -1012,52 +1016,58 @@ static int bake_target_post_migration_callback(remi_fileset_t fileset,
 
 #endif
 
-static int set_conf_cb_pipeline_enabled(bake_provider_t provider,
-                                        const char*     value)
+static int setup_poolset(bake_provider_t provider)
 {
-    int         ret;
     hg_return_t hret;
 
-    ret = sscanf(value, "%u", &provider->config.pipeline_enable);
-    if (ret != 1) return BAKE_ERR_INVALID_ARG;
-
-    if (provider->config.pipeline_enable) {
-        hret = margo_bulk_poolset_create(
-            provider->mid, provider->config.pipeline_npools,
-            provider->config.pipeline_nbuffers_per_pool,
-            provider->config.pipeline_first_buffer_size,
-            provider->config.pipeline_multiplier, HG_BULK_READWRITE,
-            &(provider->poolset));
-        if (hret != 0) return BAKE_ERR_MERCURY;
-    }
-    return BAKE_SUCCESS;
-}
-
-int bake_provider_set_conf(bake_provider_t provider,
-                           const char*     key,
-                           const char*     value)
-{
-    /* TODO: make this more generic, manually issuing callbacks for
-     * particular keys right now.
+    /* NOTE: this is called after validate, so we don't need extensive error
+     * checking on the json here
      */
-    if (strcmp(key, "pipeline_enabled") == 0)
-        return set_conf_cb_pipeline_enabled(provider, value);
-    else
-        return BAKE_ERR_INVALID_ARG;
-}
 
-int bake_target_set_conf(bake_provider_t  provider,
-                         bake_target_id_t tid,
-                         const char*      key,
-                         const char*      value)
-{
-    // TODO
-    return 0;
+    /* nothing to do if pipelining is disabled */
+    if (!json_object_get_boolean(
+            json_object_object_get(provider->json_cfg, "pipeline_enable"))) {
+        return (0);
+    }
+
+    hret = margo_bulk_poolset_create(
+        provider->mid,
+        json_object_get_int(
+            json_object_object_get(provider->json_cfg, "pipeline_npools")),
+        json_object_get_int(json_object_object_get(
+            provider->json_cfg, "pipeline_nbuffers_per_pool")),
+        json_object_get_int(json_object_object_get(
+            provider->json_cfg, "pipeline_first_buffer_size")),
+        json_object_get_int(
+            json_object_object_get(provider->json_cfg, "pipeline_multiplier")),
+        HG_BULK_READWRITE, &(provider->poolset));
+    if (hret != 0) return BAKE_ERR_MERCURY;
+
+    return BAKE_SUCCESS;
 }
 
 static int validate_and_complete_config(struct json_object* _config,
                                         ABT_pool            _progress_pool)
 {
-    /* TODO: fill this in */
+    struct json_object* val;
+
+    /* populate default pipeline settings if not specified already */
+
+    /* pipeline yes or no; implies intermediate buffering */
+    CONFIG_HAS_OR_CREATE(_config, boolean, "pipeline_enable", 0,
+                         "pipeline_enable", val);
+    /* number of preallocated buffer pools */
+    CONFIG_HAS_OR_CREATE(_config, int64, "pipeline_npools", 4,
+                         "pipeline_npools", val);
+    /* buffers per buffer pool */
+    CONFIG_HAS_OR_CREATE(_config, int64, "pipeline_nbuffers_per_pool", 32,
+                         "pipeline_nbuffers_per_pool", val);
+    /* size of buffers in smallest pool */
+    CONFIG_HAS_OR_CREATE(_config, int64, "pipeline_first_buffer_size", 65536,
+                         "pipeline_first_buffer_size", val);
+    /* factor size increase per pool */
+    CONFIG_HAS_OR_CREATE(_config, int64, "pipeline_multiplier", 4,
+                         "pipeline_multiplier", val);
+
     return (0);
 }

@@ -28,15 +28,6 @@ typedef struct {
     UT_hash_handle    hh;
 } bake_target_t;
 
-struct bake_provider_conf {
-    unsigned pipeline_enable; /* pipeline yes or no; implies intermediate
-                                 buffering */
-    unsigned pipeline_npools; /* number of preallocated buffer pools */
-    unsigned pipeline_nbuffers_per_pool; /* buffers per buffer pool */
-    unsigned pipeline_first_buffer_size; /* size of buffers in smallest pool */
-    unsigned pipeline_multiplier;        /* factor size increase per pool */
-};
-
 typedef struct bake_provider {
     margo_instance_id mid;
     ABT_pool   handler_pool; // pool used to run RPC handlers for this provider
@@ -54,8 +45,7 @@ typedef struct bake_provider {
     int             owns_remi_provider;
 #endif
 
-    struct bake_provider_conf config;  /* configuration for transfers */
-    margo_bulk_poolset_t      poolset; /* intermediate buffers, if used */
+    margo_bulk_poolset_t poolset; /* intermediate buffers, if used */
 
     // list of RPC ids
     hg_id_t rpc_create_id;

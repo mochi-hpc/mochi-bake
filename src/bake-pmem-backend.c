@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <json-c/json.h>
 #include "bake-config.h"
 #include "bake.h"
 #include "bake-rpc.h"
@@ -193,7 +194,8 @@ static int write_transfer_data(margo_instance_id mid,
     /* resolve addr, could be addr of rpc sender (normal case) or a third
      * party (proxy write)
      */
-    if (provider->config.pipeline_enable == 0) {
+    if (!json_object_get_boolean(
+            json_object_object_get(provider->json_cfg, "pipeline_enable"))) {
         /* normal path; no pipeline or intermediate buffers */
 
         /* create bulk handle for local side of transfer */

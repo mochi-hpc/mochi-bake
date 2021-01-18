@@ -128,39 +128,6 @@ int bake_provider_count_storage_targets(bake_provider_t provider,
 int bake_provider_list_storage_targets(bake_provider_t   provider,
                                        bake_target_id_t* targets);
 
-/* TODO: the following configuration management functions would ideally be
- * split off into a dedicated component.  Treating this as a prototype for
- * now.
- */
-
-/**
- * @brief Set configuration parameters as string key/value pairs
- *
- * @param provider Bake provider
- * @param key Configuration key
- * @param value Configuratiion value
- *
- * @return 0 on success, -1 on failure
- */
-int bake_provider_set_conf(bake_provider_t provider,
-                           const char*     key,
-                           const char*     value);
-
-/**
- * @brief Set configuration parameters for a target.
- *
- * @param provider Bake provider
- * @param tid Bake target id
- * @param key Configuration key
- * @param value Configuration value
- *
- * @return 0 on success, -1 on failure
- */
-int bake_target_set_conf(bake_provider_t  provider,
-                         bake_target_id_t tid,
-                         const char*      key,
-                         const char*      value);
-
 #ifdef __cplusplus
 }
 #endif

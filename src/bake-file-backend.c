@@ -10,8 +10,9 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
-
+#include <json-c/json.h>
 #include <abt-io.h>
+
 #include "bake-config.h"
 #include "bake.h"
 #include "bake-rpc.h"
@@ -160,7 +161,8 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
     ptrdiff_t   d;
     struct stat statbuf;
 
-    if (!provider->config.pipeline_enable) {
+    if (!json_object_get_boolean(
+            json_object_object_get(provider->json_cfg, "pipeline_enable"))) {
         fprintf(stderr, "Error: The Bake file backend requires pipelining.\n");
         fprintf(stderr,
                 "   Enable pipelining with -p on the bake-server-daemon "
