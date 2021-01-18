@@ -51,6 +51,13 @@ struct bake_provider_conf g_default_bake_provider_conf
        .pipeline_first_buffer_size = 65536,
        .pipeline_multiplier        = 4};
 
+/**
+ * Validates the format of the configuration and fills default values
+ * if they are not provided
+ */
+static int validate_and_complete_config(struct json_object* _config,
+                                        ABT_pool            _progress_pool);
+
 static bake_target_t* find_target_entry(bake_provider_t  provider,
                                         bake_target_id_t target_id)
 {
@@ -75,6 +82,7 @@ int bake_provider_register(margo_instance_id                     mid,
     struct bake_provider_init_info args = *uargs;
     bake_provider*                 tmp_provider;
     int                            ret;
+    struct json_object*            config = NULL;
 
     /* check if a provider with the same provider id already exists */
     {
@@ -89,6 +97,34 @@ int bake_provider_register(margo_instance_id                     mid,
                     provider_id);
             return BAKE_ERR_MERCURY;
         }
+    }
+
+    if (args.json_config) {
+        /* read JSON config from provided string argument */
+        struct json_tokener*    tokener = json_tokener_new();
+        enum json_tokener_error jerr;
+
+        config = json_tokener_parse_ex(tokener, args.json_config,
+                                       strlen(args.json_config));
+        if (!config) {
+            jerr = json_tokener_get_error(tokener);
+            fprintf(stderr, "JSON parse error: %s",
+                    json_tokener_error_desc(jerr));
+            json_tokener_free(tokener);
+            return BAKE_ERR_INVALID_ARG;
+        }
+        json_tokener_free(tokener);
+    } else {
+        /* create default JSON config */
+        config = json_object_new_object();
+    }
+
+    /* validate and complete configuration */
+    ret = validate_and_complete_config(config, args.rpc_pool);
+    if (ret != 0) {
+        fprintf(stderr, "Could not validate and complete configuration");
+        json_object_put(config);
+        return BAKE_ERR_INVALID_ARG;
     }
 
     /* allocate the resulting structure */
@@ -261,6 +297,8 @@ int bake_provider_register(margo_instance_id                     mid,
         }
     }
 #endif
+
+    tmp_provider->json_cfg = config;
 
     /* install the bake server finalize callback */
     margo_provider_push_finalize_callback(
@@ -922,6 +960,8 @@ static void bake_server_finalize_cb(void* data)
 
     bake_provider_remove_all_storage_targets(provider);
 
+    json_object_put(provider->json_cfg);
+
     ABT_rwlock_free(&(provider->lock));
 
     free(provider);
@@ -1013,4 +1053,11 @@ int bake_target_set_conf(bake_provider_t  provider,
 {
     // TODO
     return 0;
+}
+
+static int validate_and_complete_config(struct json_object* _config,
+                                        ABT_pool            _progress_pool)
+{
+    /* TODO: fill this in */
+    return (0);
 }
