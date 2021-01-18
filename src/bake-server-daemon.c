@@ -154,10 +154,10 @@ int main(int argc, char** argv)
     if (opts.mplex_mode == MODE_PROVIDERS) {
         int i;
         for (i = 0; i < opts.num_pools; i++) {
-            bake_provider_t  provider;
-            bake_target_id_t tid;
-            ret = bake_provider_register(mid, i + 1, BAKE_ABT_POOL_DEFAULT,
-                                         &provider);
+            bake_provider_t                provider;
+            bake_target_id_t               tid;
+            struct bake_provider_init_info bpargs = {0};
+            ret = bake_provider_register(mid, i + 1, &bpargs, &provider);
 
             if (ret != 0) {
                 bake_perror("Error: bake_provider_register()", ret);
@@ -183,9 +183,10 @@ int main(int argc, char** argv)
 
     } else {
 
-        int             i;
-        bake_provider_t provider;
-        ret = bake_provider_register(mid, 1, BAKE_ABT_POOL_DEFAULT, &provider);
+        int                            i;
+        bake_provider_t                provider;
+        struct bake_provider_init_info bpargs = {0};
+        ret = bake_provider_register(mid, 1, &bpargs, &provider);
 
         if (ret != 0) {
             bake_perror("Error: bake_provider_register()", ret);

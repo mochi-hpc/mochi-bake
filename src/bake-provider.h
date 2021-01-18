@@ -74,6 +74,8 @@ typedef struct bake_provider {
     hg_id_t rpc_migrate_region_id;
     hg_id_t rpc_migrate_target_id;
 
+    struct json_object* json_cfg;
+
 } bake_provider;
 
 #endif

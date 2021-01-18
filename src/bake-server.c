@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <margo.h>
 #include <margo-bulk-pool.h>
+#include <json-c/json.h>
 #ifdef USE_REMI
     #include <remi/remi-client.h>
     #include <remi/remi-server.h>
@@ -66,13 +67,15 @@ static int bake_target_post_migration_callback(remi_fileset_t fileset,
                                                void*          provider);
 #endif
 
-int bake_provider_register(margo_instance_id mid,
-                           uint16_t          provider_id,
-                           ABT_pool          abt_pool,
-                           bake_provider_t*  provider)
+int bake_provider_register(margo_instance_id                     mid,
+                           uint16_t                              provider_id,
+                           const struct bake_provider_init_info* uargs,
+                           bake_provider_t*                      provider)
 {
-    bake_provider* tmp_provider;
-    int            ret;
+    struct bake_provider_init_info args = *uargs;
+    bake_provider*                 tmp_provider;
+    int                            ret;
+
     /* check if a provider with the same provider id already exists */
     {
         hg_id_t   id;
@@ -93,8 +96,8 @@ int bake_provider_register(margo_instance_id mid,
     if (!tmp_provider) return BAKE_ERR_ALLOCATION;
 
     tmp_provider->mid = mid;
-    if (abt_pool != ABT_POOL_NULL)
-        tmp_provider->handler_pool = abt_pool;
+    if (args.rpc_pool != NULL)
+        tmp_provider->handler_pool = args.rpc_pool;
     else {
         margo_get_handler_pool(mid, &(tmp_provider->handler_pool));
     }
@@ -112,38 +115,39 @@ int bake_provider_register(margo_instance_id mid,
     hg_id_t rpc_id;
     rpc_id = MARGO_REGISTER_PROVIDER(mid, "bake_create_rpc", bake_create_in_t,
                                      bake_create_out_t, bake_create_ult,
-                                     provider_id, abt_pool);
+                                     provider_id, tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_create_id = rpc_id;
 
     rpc_id = MARGO_REGISTER_PROVIDER(mid, "bake_write_rpc", bake_write_in_t,
                                      bake_write_out_t, bake_write_ult,
-                                     provider_id, abt_pool);
+                                     provider_id, tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_write_id = rpc_id;
 
     rpc_id = MARGO_REGISTER_PROVIDER(
         mid, "bake_eager_write_rpc", bake_eager_write_in_t,
-        bake_eager_write_out_t, bake_eager_write_ult, provider_id, abt_pool);
+        bake_eager_write_out_t, bake_eager_write_ult, provider_id,
+        tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_eager_write_id = rpc_id;
 
     rpc_id = MARGO_REGISTER_PROVIDER(
         mid, "bake_eager_read_rpc", bake_eager_read_in_t, bake_eager_read_out_t,
-        bake_eager_read_ult, provider_id, abt_pool);
+        bake_eager_read_ult, provider_id, tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_eager_read_id = rpc_id;
 
     rpc_id = MARGO_REGISTER_PROVIDER(mid, "bake_persist_rpc", bake_persist_in_t,
                                      bake_persist_out_t, bake_persist_ult,
-                                     provider_id, abt_pool);
+                                     provider_id, tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_persist_id = rpc_id;
 
     rpc_id = MARGO_REGISTER_PROVIDER(
         mid, "bake_create_write_persist_rpc", bake_create_write_persist_in_t,
         bake_create_write_persist_out_t, bake_create_write_persist_ult,
-        provider_id, abt_pool);
+        provider_id, tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_create_write_persist_id = rpc_id;
 
@@ -151,56 +155,57 @@ int bake_provider_register(margo_instance_id mid,
                                      bake_eager_create_write_persist_in_t,
                                      bake_eager_create_write_persist_out_t,
                                      bake_eager_create_write_persist_ult,
-                                     provider_id, abt_pool);
+                                     provider_id, tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_eager_create_write_persist_id = rpc_id;
 
-    rpc_id = MARGO_REGISTER_PROVIDER(mid, "bake_get_size_rpc",
-                                     bake_get_size_in_t, bake_get_size_out_t,
-                                     bake_get_size_ult, provider_id, abt_pool);
+    rpc_id = MARGO_REGISTER_PROVIDER(
+        mid, "bake_get_size_rpc", bake_get_size_in_t, bake_get_size_out_t,
+        bake_get_size_ult, provider_id, tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_get_size_id = rpc_id;
 
-    rpc_id = MARGO_REGISTER_PROVIDER(mid, "bake_get_data_rpc",
-                                     bake_get_data_in_t, bake_get_data_out_t,
-                                     bake_get_data_ult, provider_id, abt_pool);
+    rpc_id = MARGO_REGISTER_PROVIDER(
+        mid, "bake_get_data_rpc", bake_get_data_in_t, bake_get_data_out_t,
+        bake_get_data_ult, provider_id, tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_get_data_id = rpc_id;
 
     rpc_id = MARGO_REGISTER_PROVIDER(mid, "bake_read_rpc", bake_read_in_t,
                                      bake_read_out_t, bake_read_ult,
-                                     provider_id, abt_pool);
+                                     provider_id, tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_read_id = rpc_id;
 
     rpc_id = MARGO_REGISTER_PROVIDER(mid, "bake_probe_rpc", bake_probe_in_t,
                                      bake_probe_out_t, bake_probe_ult,
-                                     provider_id, abt_pool);
+                                     provider_id, tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_probe_id = rpc_id;
 
     rpc_id = MARGO_REGISTER_PROVIDER(mid, "bake_noop_rpc", void, void,
-                                     bake_noop_ult, provider_id, abt_pool);
+                                     bake_noop_ult, provider_id,
+                                     tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_noop_id = rpc_id;
 
     rpc_id = MARGO_REGISTER_PROVIDER(mid, "bake_remove_rpc", bake_remove_in_t,
                                      bake_remove_out_t, bake_remove_ult,
-                                     provider_id, abt_pool);
+                                     provider_id, tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_remove_id = rpc_id;
 
     rpc_id = MARGO_REGISTER_PROVIDER(
         mid, "bake_migrate_region_rpc", bake_migrate_region_in_t,
         bake_migrate_region_out_t, bake_migrate_region_ult, provider_id,
-        abt_pool);
+        tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_migrate_region_id = rpc_id;
 
     rpc_id = MARGO_REGISTER_PROVIDER(
         mid, "bake_migrate_target_rpc", bake_migrate_target_in_t,
         bake_migrate_target_out_t, bake_migrate_target_ult, provider_id,
-        abt_pool);
+        tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_migrate_target_id = rpc_id;
 
@@ -239,7 +244,7 @@ int bake_provider_register(margo_instance_id mid,
         } else { /* REMI provider does not exist */
             // TODO actually use an ABT-IO instance
             ret = remi_provider_register(mid, ABT_IO_INSTANCE_NULL, provider_id,
-                                         abt_pool,
+                                         tmp_provider->handler_pool,
                                          &(tmp_provider->remi_provider));
             if (ret != REMI_SUCCESS) {
                 // XXX unregister RPCs, cleanup tmp_provider before returning

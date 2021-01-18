@@ -15,7 +15,6 @@
 extern "C" {
 #endif
 
-#define BAKE_ABT_POOL_DEFAULT    ABT_POOL_NULL
 #define BAKE_PROVIDER_ID_DEFAULT 0
 #define BAKE_PROVIDER_IGNORE     NULL
 
@@ -35,6 +34,16 @@ typedef struct bake_provider* bake_provider_t;
 int bake_makepool(const char* pool_name, size_t pool_size, mode_t pool_mode);
 
 /**
+ * The bake_provider_init_info structure can be passed in to the
+ * bake_provider_register() function to configure the provider. The struct
+ * can be memset to zero to use default values.
+ */
+struct bake_provider_init_info {
+    const char* json_config; /* JSON-formatted string */
+    ABT_pool    rpc_pool;    /* pool on which to run RPC handlers */
+};
+
+/**
  * Initializes a BAKE provider.
  *
  * @param[in] mid Margo instance identifier
@@ -44,10 +53,10 @@ int bake_makepool(const char* pool_name, size_t pool_size, mode_t pool_mode);
  * @param[out] provider resulting provider
  * @returns 0 on success, -1 otherwise
  */
-int bake_provider_register(margo_instance_id mid,
-                           uint16_t          provider_id,
-                           ABT_pool          pool,
-                           bake_provider_t*  provider);
+int bake_provider_register(margo_instance_id                     mid,
+                           uint16_t                              provider_id,
+                           const struct bake_provider_init_info* args,
+                           bake_provider_t*                      provider);
 
 /**
  * @brief Deregisters and destroys the provider.
