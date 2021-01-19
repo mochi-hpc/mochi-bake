@@ -33,6 +33,12 @@
 #define BAKE_ALIGN_UP(x)   ((((unsigned long)(x)) + 4095) & (~(4095)))
 #define BAKE_ALIGN_DOWN(x) ((unsigned long)(x) & (~(4095)))
 
+/* The superblock contains metadata at the front of the log.  This size is
+ * not tunable; it is set when the target is created.  It must be a multiple
+ * of 4k to ensure that it works with directio on most (all?) platforms.
+ */
+#define BAKE_SUPERBLOCK_SIZE 4096
+
 #define TRANSFER_DATA_READ  1
 #define TRANSFER_DATA_WRITE 2
 
@@ -127,15 +133,16 @@ int bake_file_makepool(const char* file_name,
     /* we'll put a full block at the front of the file, the first bytes of
      * which will contain the bake_root_t
      */
-    ret = posix_memalign((void**)(&root), BAKE_ALIGNMENT, BAKE_ALIGNMENT);
+    ret = posix_memalign((void**)(&root), BAKE_SUPERBLOCK_SIZE,
+                         BAKE_SUPERBLOCK_SIZE);
     assert(ret == 0);
-    memset(root, 0, BAKE_ALIGNMENT);
+    memset(root, 0, BAKE_SUPERBLOCK_SIZE);
 
     /* store the target id for this bake pool at the root */
     uuid_generate(root->pool_id.id);
 
-    ret = write(fd, root, BAKE_ALIGNMENT);
-    if (ret != BAKE_ALIGNMENT) {
+    ret = write(fd, root, BAKE_SUPERBLOCK_SIZE);
+    if (ret != BAKE_SUPERBLOCK_SIZE) {
         perror("write");
         free(root);
         return (BAKE_ERR_IO);
