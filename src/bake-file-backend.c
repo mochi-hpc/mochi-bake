@@ -19,6 +19,7 @@
 #include "bake-server.h"
 #include "bake-provider.h"
 #include "bake-backend.h"
+#include "bake-macros.h"
 
 /* bake-file-backend
  *
@@ -164,9 +165,11 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
     bake_file_entry_t* new_entry = calloc(1, sizeof(*new_entry));
     new_entry->provider          = provider;
     new_entry->log_fd            = -1;
-    const char* tmp;
-    ptrdiff_t   d;
-    struct stat statbuf;
+    const char*         tmp;
+    ptrdiff_t           d;
+    struct stat         statbuf;
+    struct json_object* file_backend_json = NULL;
+    struct json_object* target_array      = NULL;
 
     if (!json_object_get_boolean(
             json_object_object_get(provider->json_cfg, "pipeline_enable"))) {
@@ -179,6 +182,15 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
                 "\"pipeline_enabled\", \"1\")\n");
         return (BAKE_ERR_INVALID_ARG);
     }
+
+    CONFIG_HAS_OR_CREATE_OBJECT(provider->json_cfg, "file_backend",
+                                "file_backend", file_backend_json);
+    CONFIG_HAS_OR_CREATE_ARRAY(file_backend_json, "targets",
+                               "file_backend.targets", target_array);
+
+    /* TODO: populate tuning parameters specific to this backend; for now
+     * that's probably alignment and abt-io thread count?
+     */
 
     tmp = strrchr(path, '/');
     if (!tmp) tmp = path;
@@ -235,6 +247,11 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
         ret = BAKE_ERR_IO;
         goto error_cleanup;
     }
+
+    /* target successfully added; inject it into the json in array of
+     * targets for this backend
+     */
+    json_object_array_add(target_array, json_object_new_string(path));
 
     fprintf(stderr,
             "WARNING: Bake file backend does not yet support the following:\n");
