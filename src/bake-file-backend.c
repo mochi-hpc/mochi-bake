@@ -227,14 +227,14 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
     new_entry->log_offset = statbuf.st_size;
 
     /* check to make sure the root is properly set */
-    ret = posix_memalign((void**)(&new_entry->file_root), BAKE_ALIGNMENT,
-                         BAKE_ALIGNMENT);
+    ret = posix_memalign((void**)(&new_entry->file_root), BAKE_SUPERBLOCK_SIZE,
+                         BAKE_SUPERBLOCK_SIZE);
     if (ret < 0) {
         ret = BAKE_ERR_IO;
         goto error_cleanup;
     }
     ret = abt_io_pread(new_entry->abtioi, new_entry->log_fd,
-                       new_entry->file_root, BAKE_ALIGNMENT, 0);
+                       new_entry->file_root, BAKE_SUPERBLOCK_SIZE, 0);
     if (ret < 0) {
         ret = BAKE_ERR_IO;
         goto error_cleanup;
