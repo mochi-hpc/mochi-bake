@@ -109,6 +109,7 @@ int main(int argc, char** argv)
     mid = margo_init(opts.listen_addr_str, MARGO_SERVER_MODE, 0, -1);
     if (mid == MARGO_INSTANCE_NULL) {
         fprintf(stderr, "Error: margo_init()\n");
+        free(opts.bake_pools);
         return (-1);
     }
 
@@ -126,6 +127,7 @@ int main(int argc, char** argv)
         hret = margo_addr_self(mid, &self_addr);
         if (hret != HG_SUCCESS) {
             fprintf(stderr, "Error: margo_addr_self()\n");
+            free(opts.bake_pools);
             margo_finalize(mid);
             return (-1);
         }
@@ -133,6 +135,7 @@ int main(int argc, char** argv)
                                     self_addr);
         if (hret != HG_SUCCESS) {
             fprintf(stderr, "Error: margo_addr_to_string()\n");
+            free(opts.bake_pools);
             margo_addr_free(mid, self_addr);
             margo_finalize(mid);
             return (-1);
@@ -141,6 +144,7 @@ int main(int argc, char** argv)
 
         fp = fopen(opts.host_file, "w");
         if (!fp) {
+            free(opts.bake_pools);
             perror("fopen");
             margo_finalize(mid);
             return (-1);
@@ -169,6 +173,7 @@ int main(int argc, char** argv)
 
             if (ret != 0) {
                 bake_perror("Error: bake_provider_register()", ret);
+                free(opts.bake_pools);
                 margo_finalize(mid);
                 return (-1);
             }
@@ -178,6 +183,7 @@ int main(int argc, char** argv)
 
             if (ret != 0) {
                 bake_perror("Error: bake_provider_add_storage_target()", ret);
+                free(opts.bake_pools);
                 margo_finalize(mid);
                 return (-1);
             }
@@ -208,6 +214,7 @@ int main(int argc, char** argv)
 
         if (ret != 0) {
             bake_perror("Error: bake_provider_register()", ret);
+            free(opts.bake_pools);
             margo_finalize(mid);
             return (-1);
         }
@@ -219,6 +226,7 @@ int main(int argc, char** argv)
 
             if (ret != 0) {
                 bake_perror("Error: bake_provider_add_storage_target()", ret);
+                free(opts.bake_pools);
                 margo_finalize(mid);
                 return (-1);
             }

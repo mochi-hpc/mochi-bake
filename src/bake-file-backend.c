@@ -190,7 +190,8 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
     new_entry->log_fd
         = abt_io_open(new_entry->abtioi, path, O_RDWR | O_DIRECT, 0);
     if (new_entry->log_fd < 0) {
-        perror("open");
+        fprintf(stderr, "open(): %s on %s\n", strerror(-new_entry->log_fd),
+                path);
         ret = BAKE_ERR_IO;
         goto error_cleanup;
     }
