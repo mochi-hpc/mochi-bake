@@ -6,6 +6,7 @@
 #include "bake-server.h"
 #include "bake-provider.h"
 #include "bake-backend.h"
+#include "bake-macros.h"
 
 /* definition of BAKE root data structure (just a uuid for now) */
 typedef struct {
@@ -84,11 +85,20 @@ static int bake_pmem_backend_initialize(bake_provider_t    provider,
 {
     bake_pmem_entry_t* new_context
         = (bake_pmem_entry_t*)calloc(1, sizeof(*new_context));
-    char* tmp             = strrchr(path, '/');
-    new_context->provider = provider;
-    new_context->filename = strdup(tmp);
-    ptrdiff_t d           = tmp - path;
-    new_context->root     = strndup(path, d);
+    char* tmp                             = strrchr(path, '/');
+    new_context->provider                 = provider;
+    new_context->filename                 = strdup(tmp);
+    ptrdiff_t d                           = tmp - path;
+    new_context->root                     = strndup(path, d);
+    struct json_object* pmem_backend_json = NULL;
+    struct json_object* target_array      = NULL;
+
+    CONFIG_HAS_OR_CREATE_OBJECT(provider->json_cfg, "pmem_backend",
+                                "pmem_backend", pmem_backend_json);
+    CONFIG_HAS_OR_CREATE_ARRAY(pmem_backend_json, "targets",
+                               "pmem_backend.targets", target_array);
+
+    /* TODO: populate tuning parameters specific to this backend */
 
     new_context->pmem_pool = pmemobj_open(path, NULL);
     if (!(new_context->pmem_pool)) {
@@ -114,6 +124,11 @@ static int bake_pmem_backend_initialize(bake_provider_t    provider,
         free(new_context);
         return BAKE_ERR_UNKNOWN_TARGET;
     }
+
+    /* target successfully added; inject it into the json in array of
+     * targets for this backend
+     */
+    json_object_array_add(target_array, json_object_new_string(path));
 
     *target  = tid;
     *context = new_context;
