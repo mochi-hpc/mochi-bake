@@ -32,7 +32,7 @@ typedef int (*bake_write_bulk_fn)(backend_context_t context,
                                   hg_addr_t         source,
                                   size_t            bulk_offset);
 
-typedef void (*free_fn)(void*);
+typedef void (*free_fn)(backend_context_t context, void*);
 
 typedef int (*bake_read_raw_fn)(backend_context_t context,
                                 bake_region_id_t  rid,

@@ -431,7 +431,7 @@ static int bake_file_write_bulk(backend_context_t context,
  * bake_file_read_raw().  It is like a normal fre() except that it must
  * round down to block alignment to find the correct pointer to free.
  */
-static void bake_file_read_raw_free(void* ptr)
+static void bake_file_read_raw_free(backend_context_t context, void* ptr)
 {
     free((void*)(BAKE_ALIGN_DOWN(ptr)));
     return;

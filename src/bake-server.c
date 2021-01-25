@@ -778,7 +778,7 @@ static void bake_eager_read_ult(hg_handle_t handle)
 finish:
     UNLOCK_PROVIDER;
     RESPOND_AND_CLEANUP;
-    if (free_data) free_data(out.buffer);
+    if (free_data) free_data(target->context, out.buffer);
 }
 DEFINE_MARGO_RPC_HANDLER(bake_eager_read_ult)
 
