@@ -191,8 +191,16 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
                                "file_backend.targets", target_array);
 
     /* tuning parameters */
+
+    /* alignment */
     CONFIG_HAS_OR_CREATE(file_backend_json, int64, "alignment", 4096,
                          "file_backend.alignment", val);
+
+    /* nthreads for abtio */
+    /* TODO: add ability to pass this in from bedrock and/or report abtio
+     * json */
+    CONFIG_HAS_OR_CREATE(file_backend_json, int64, "abtio_nthreads", 16,
+                         "file_backend.abtio_nthreads", val);
 
     tmp = strrchr(path, '/');
     if (!tmp) tmp = path;
@@ -201,8 +209,8 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
     new_entry->root     = strndup(path, d);
 
     /* initialize an abt-io instance just for this target */
-    /* TODO: make number of backing threads tunable */
-    new_entry->abtioi = abt_io_init(16);
+    new_entry->abtioi = abt_io_init(json_object_get_int(
+        json_object_object_get(file_backend_json, "abtio_nthreads")));
     if (!new_entry->abtioi) {
         ret = BAKE_ERR_IO;
         goto error_cleanup;
