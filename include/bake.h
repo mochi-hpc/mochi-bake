@@ -14,6 +14,15 @@
 extern "C" {
 #endif
 
+#define BAKE_TRACE(_mid, _format, f...) margo_trace(_mid, "bake: " _format, ##f)
+#define BAKE_DEBUG(_mid, _format, f...) margo_debug(_mid, "bake: " _format, ##f)
+#define BAKE_INFO(_mid, _format, f...)  margo_info(_mid, "bake: " _format, ##f)
+#define BAKE_WARNING(_mid, _format, f...) \
+    margo_warning(_mid, "bake: " _format, ##f)
+#define BAKE_ERROR(_mid, _format, f...) margo_error(_mid, "bake: " _format, ##f)
+#define BAKE_CRITICAL(_mid, _format, f...) \
+    margo_critical(_mid, "bake: " _format, ##f)
+
 typedef struct {
     uuid_t id;
 } bake_target_id_t;

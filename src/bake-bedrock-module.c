@@ -20,12 +20,12 @@ static int bake_register_provider(bedrock_args_t             args,
     const char* config                 = bedrock_args_get_config(args);
     const char* name                   = bedrock_args_get_name(args);
 
-    printf("Registering a Bake provider\n");
-    printf(" -> mid         = %p\n", (void*)mid);
-    printf(" -> provider id = %d\n", provider_id);
-    printf(" -> pool        = %p\n", (void*)pool);
-    printf(" -> config      = %s\n", config);
-    printf(" -> name        = %s\n", name);
+    BAKE_TRACE(mid, "bake_register_provider()");
+    BAKE_INFO(mid, " -> mid         = %p", (void*)mid);
+    BAKE_INFO(mid, " -> provider id = %d", provider_id);
+    BAKE_INFO(mid, " -> pool        = %p", (void*)pool);
+    BAKE_INFO(mid, " -> config      = %s", config);
+    BAKE_INFO(mid, " -> name        = %s", name);
 
     bpargs.json_config = config;
     ret                = bake_provider_register(mid, provider_id, &bpargs,
@@ -38,8 +38,6 @@ static int bake_register_provider(bedrock_args_t             args,
 static int bake_deregister_provider(bedrock_module_provider_t provider)
 {
     int ret;
-
-    printf("Deregistering a Bake provider\n");
 
     ret = bake_provider_destroy(provider);
     if (ret < 0) return (-1);
@@ -57,8 +55,7 @@ static int bake_init_client(margo_instance_id        mid,
 {
     int ret;
 
-    printf("Registering a Bake client\n");
-    printf(" -> mid = %p\n", (void*)mid);
+    BAKE_TRACE(mid, "bake_init_client()");
 
     ret = bake_client_init(mid, (bake_client_t*)client);
     if (ret < 0) return (-1);
@@ -69,8 +66,6 @@ static int bake_init_client(margo_instance_id        mid,
 static int bake_finalize_client(bedrock_module_client_t client)
 {
     int ret;
-
-    printf("Finalizing a Bake client\n");
 
     ret = bake_client_finalize(client);
     if (ret < 0) return (-1);
@@ -85,8 +80,6 @@ static int bake_create_provider_handle(bedrock_module_client_t client,
 {
     int ret;
 
-    printf("Creating Bake provider handle\n");
-
     ret = bake_provider_handle_create(client, address, provider_id,
                                       (bake_provider_handle_t*)ph);
     if (ret < 0) return (-1);
@@ -98,7 +91,6 @@ static int bake_destroy_provider_handle(bedrock_module_provider_handle_t ph)
 {
     int ret;
 
-    printf("Destroying Bake provider handle\n");
     ret = bake_provider_handle_release(ph);
     if (ret < 0) return (-1);
 

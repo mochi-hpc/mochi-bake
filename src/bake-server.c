@@ -85,10 +85,11 @@ int bake_provider_register(margo_instance_id                     mid,
         margo_provider_registered_name(mid, "bake_probe_rpc", provider_id, &id,
                                        &flag);
         if (flag == HG_TRUE) {
-            fprintf(stderr,
-                    "bake_provider_register(): a BAKE provider with the same "
-                    "id (%d) already exists\n",
-                    provider_id);
+            BAKE_ERROR(
+                mid,
+                "bake_provider_register(): a bake provider with the same "
+                "id (%d) already exists",
+                provider_id);
             return BAKE_ERR_MERCURY;
         }
     }
@@ -102,8 +103,8 @@ int bake_provider_register(margo_instance_id                     mid,
                                        strlen(args.json_config));
         if (!config) {
             jerr = json_tokener_get_error(tokener);
-            fprintf(stderr, "JSON parse error: %s",
-                    json_tokener_error_desc(jerr));
+            BAKE_ERROR(mid, "JSON parse error: %s",
+                       json_tokener_error_desc(jerr));
             json_tokener_free(tokener);
             return BAKE_ERR_INVALID_ARG;
         }
@@ -116,7 +117,7 @@ int bake_provider_register(margo_instance_id                     mid,
     /* validate and complete configuration */
     ret = validate_and_complete_config(config, args.rpc_pool);
     if (ret != 0) {
-        fprintf(stderr, "Could not validate and complete configuration");
+        BAKE_ERROR(mid, "could not validate and complete configuration");
         json_object_put(config);
         return BAKE_ERR_INVALID_ARG;
     }
@@ -136,7 +137,7 @@ int bake_provider_register(margo_instance_id                     mid,
 
     ret = setup_poolset(tmp_provider);
     if (ret != 0) {
-        fprintf(stderr, "Could not create poolset for pipelining");
+        BAKE_ERROR(mid, "could not create poolset for pipelining");
         json_object_put(config);
         free(tmp_provider);
         return ret;
@@ -346,7 +347,7 @@ int bake_provider_add_storage_target(bake_provider_t   provider,
     } else if (strcmp(backend_type, "file") == 0) {
         new_entry->backend = &g_bake_file_backend;
     } else {
-        fprintf(stderr, "ERROR: unknown backend type \"%s\"\n", backend_type);
+        BAKE_ERROR(provider->mid, "unknown backend type \"%s\"", backend_type);
         free(backend_type);
         return BAKE_ERR_BACKEND_TYPE;
     }
@@ -370,8 +371,8 @@ int bake_provider_add_storage_target(bake_provider_t   provider,
     HASH_FIND(hh, provider->targets, &tid, sizeof(bake_target_id_t),
               check_entry);
     if (check_entry != new_entry) {
-        fprintf(stderr,
-                "Error: BAKE could not insert new pmem pool into the hash\n");
+        BAKE_ERROR(provider->mid,
+                   "could not insert new pmem pool into the hash");
         new_entry->backend->_finalize(ctx);
         free(new_entry);
         ret = BAKE_ERR_ALLOCATION;

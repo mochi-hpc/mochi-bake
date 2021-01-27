@@ -102,7 +102,7 @@ static int bake_pmem_backend_initialize(bake_provider_t    provider,
 
     new_context->pmem_pool = pmemobj_open(path, NULL);
     if (!(new_context->pmem_pool)) {
-        fprintf(stderr, "pmemobj_open: %s\n", pmemobj_errormsg());
+        BAKE_ERROR(provider->mid, "pmemobj_open: %s", pmemobj_errormsg());
         free(new_context->filename);
         free(new_context->root);
         free(new_context);
@@ -116,8 +116,7 @@ static int bake_pmem_backend_initialize(bake_provider_t    provider,
     bake_target_id_t tid   = new_context->pmem_root->pool_id;
 
     if (uuid_is_null(tid.id)) {
-        fprintf(stderr, "Error: BAKE pool %s is not properly initialized\n",
-                path);
+        BAKE_ERROR(provider->mid, "pool %s is not properly initialized", path);
         pmemobj_close(new_context->pmem_pool);
         free(new_context->filename);
         free(new_context->root);

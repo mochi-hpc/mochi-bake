@@ -175,13 +175,10 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
 
     if (!json_object_get_boolean(
             json_object_object_get(provider->json_cfg, "pipeline_enable"))) {
-        fprintf(stderr, "Error: The Bake file backend requires pipelining.\n");
-        fprintf(stderr,
-                "   Enable pipelining with -p on the bake-server-daemon "
-                "command line or\n");
-        fprintf(stderr,
-                "   programmatically with bake_provider_set_conf(provider, "
-                "\"pipeline_enabled\", \"1\")\n");
+        BAKE_ERROR(provider->mid, "the bake file backend requires pipelining");
+        BAKE_ERROR(provider->mid,
+                   "please enable pipelining in the provider's json "
+                   "configuration or with bake-server-daemon -p");
         return (BAKE_ERR_INVALID_ARG);
     }
 
@@ -219,8 +216,8 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
     new_entry->log_fd
         = abt_io_open(new_entry->abtioi, path, O_RDWR | O_DIRECT, 0);
     if (new_entry->log_fd < 0) {
-        fprintf(stderr, "open(): %s on %s\n", strerror(-new_entry->log_fd),
-                path);
+        BAKE_ERROR(provider->mid, "open(): %s on %s",
+                   strerror(-new_entry->log_fd), path);
         ret = BAKE_ERR_IO;
         goto error_cleanup;
     }
@@ -252,8 +249,7 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
     *target = new_entry->file_root->pool_id;
 
     if (uuid_is_null(target->id)) {
-        fprintf(stderr, "Error: BAKE pool %s is not properly formatted\n",
-                path);
+        BAKE_ERROR(provider->mid, "pool %s is not properly formatted", path);
         ret = BAKE_ERR_IO;
         goto error_cleanup;
     }
@@ -262,16 +258,16 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
     new_entry->log_alignment = json_object_get_int(
         json_object_object_get(file_backend_json, "alignment"));
     if (new_entry->log_alignment < 0) {
-        fprintf(stderr, "Error: negative alignment %d\n",
-                new_entry->log_alignment);
+        BAKE_ERROR(provider->mid, "negative alignment %d",
+                   new_entry->log_alignment);
         ret = BAKE_ERR_INVALID_ARG;
         goto error_cleanup;
     }
     if (!(((unsigned)new_entry->log_alignment
            & ((unsigned)new_entry->log_alignment - 1))
           == 0)) {
-        fprintf(stderr, "Error: alignment %d is not a power of 2 or zero\n",
-                new_entry->log_alignment);
+        BAKE_ERROR(provider->mid, "alignment %d is not a power of 2 or zero",
+                   new_entry->log_alignment);
         ret = BAKE_ERR_INVALID_ARG;
         goto error_cleanup;
     }
@@ -281,9 +277,9 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
      */
     json_object_array_add(target_array, json_object_new_string(path));
 
-    fprintf(stderr,
-            "WARNING: Bake file backend does not yet support the following:\n");
-    fprintf(stderr, "    * writes to non-zero region offsets\n");
+    BAKE_WARNING(provider->mid,
+                 "bake file backend does not yet support the following:");
+    BAKE_WARNING(provider->mid, "    * writes to non-zero region offsets");
 
     *context = new_entry;
     return 0;
@@ -395,9 +391,9 @@ static int bake_file_write_raw(backend_context_t context,
      * write offsets are aligned.
      */
     if (offset != 0) {
-        fprintf(stderr,
-                "Error: Bake file backend does not yet support unaligned "
-                "writes.\n");
+        BAKE_ERROR(entry->provider->mid,
+                   "bake file backend does not yet support writes to non-zero "
+                   "region offsets");
         return (BAKE_ERR_OP_UNSUPPORTED);
     }
 
@@ -446,9 +442,9 @@ static int bake_file_write_bulk(backend_context_t context,
      * write offsets are aligned.
      */
     if (region_offset != 0) {
-        fprintf(stderr,
-                "Error: Bake file backend does not yet support unaligned "
-                "writes.\n");
+        BAKE_ERROR(entry->provider->mid,
+                   "bake file backend does not yet support writes to non-zero "
+                   "region offsets");
         return (BAKE_ERR_OP_UNSUPPORTED);
     }
 
