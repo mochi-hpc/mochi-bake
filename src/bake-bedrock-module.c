@@ -28,7 +28,7 @@ static int bake_register_provider(bedrock_args_t             args,
 
     bpargs.json_config = config;
     ret                = bake_provider_register(mid, provider_id, &bpargs,
-                                 (struct bake_provider**)&provider);
+                                 (bake_provider_t*)provider);
     if (ret < 0) return (-1);
 
     return BEDROCK_SUCCESS;
