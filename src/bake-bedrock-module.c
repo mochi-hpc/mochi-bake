@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "bake-server.h"
+#include "bake-client.h"
 
 static int bake_register_provider(bedrock_args_t             args,
                                   bedrock_module_provider_t* provider)
@@ -54,16 +55,26 @@ static char* bake_get_provider_config(bedrock_module_provider_t provider)
 static int bake_init_client(margo_instance_id        mid,
                             bedrock_module_client_t* client)
 {
-    *client = strdup("bake:client");
-    printf("Registered a client from bake\n");
+    int ret;
+
+    printf("Registering a Bake client\n");
     printf(" -> mid = %p\n", (void*)mid);
+
+    ret = bake_client_init(mid, (bake_client_t*)client);
+    if (ret < 0) return (-1);
+
     return BEDROCK_SUCCESS;
 }
 
 static int bake_finalize_client(bedrock_module_client_t client)
 {
-    free(client);
-    printf("Finalized a client from bake\n");
+    int ret;
+
+    printf("Finalizing a Bake client\n");
+
+    ret = bake_client_finalize(client);
+    if (ret < 0) return (-1);
+
     return BEDROCK_SUCCESS;
 }
 
@@ -72,18 +83,25 @@ static int bake_create_provider_handle(bedrock_module_client_t client,
                                        uint16_t                provider_id,
                                        bedrock_module_provider_handle_t* ph)
 {
-    (void)client;
-    (void)address;
-    (void)provider_id;
-    *ph = strdup("bake:provider_handle");
-    printf("Created provider handle from bake\n");
+    int ret;
+
+    printf("Creating Bake provider handle\n");
+
+    ret = bake_provider_handle_create(client, address, provider_id,
+                                      (bake_provider_handle_t*)ph);
+    if (ret < 0) return (-1);
+
     return BEDROCK_SUCCESS;
 }
 
 static int bake_destroy_provider_handle(bedrock_module_provider_handle_t ph)
 {
-    free(ph);
-    printf("Destroyed provider handle from bake\n");
+    int ret;
+
+    printf("Destroying Bake provider handle\n");
+    ret = bake_provider_handle_release(ph);
+    if (ret < 0) return (-1);
+
     return BEDROCK_SUCCESS;
 }
 
