@@ -87,6 +87,8 @@ typedef int (*bake_migrate_region_fn)(backend_context_t context,
                                       bake_target_id_t  dest_target_id,
                                       bake_region_id_t* dest_rid);
 
+typedef int (*bake_create_raw_target_fn)(const char* path, size_t size);
+
 #ifdef USE_REMI
 typedef int (*bake_create_fileset_fn)(backend_context_t context,
                                       remi_fileset_t*   fileset);
@@ -108,6 +110,7 @@ typedef struct bake_backend {
     bake_get_region_data_fn           _get_region_data;
     bake_remove_fn                    _remove;
     bake_migrate_region_fn            _migrate_region;
+    bake_create_raw_target_fn         _create_raw_target;
 #ifdef USE_REMI
     bake_create_fileset_fn _create_fileset;
 #endif

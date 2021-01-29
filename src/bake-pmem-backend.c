@@ -53,7 +53,7 @@ typedef struct xfer_args {
 
 static void xfer_ult(void* _args);
 
-int bake_makepool(const char* pool_name, size_t pool_size)
+static int bake_pmem_makepool(const char* pool_name, size_t pool_size)
 {
     PMEMobjpool* pool;
     PMEMoid      root_oid;
@@ -703,6 +703,7 @@ bake_backend g_bake_pmem_backend = {
     ._get_region_data           = bake_pmem_get_region_data,
     ._remove                    = bake_pmem_remove,
     ._migrate_region            = bake_pmem_migrate_region,
+    ._create_raw_target         = bake_pmem_makepool,
 #ifdef USE_REMI
     ._create_fileset = bake_pmem_create_fileset,
 #endif

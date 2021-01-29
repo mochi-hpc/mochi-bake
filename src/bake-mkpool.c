@@ -11,7 +11,11 @@
 #include <unistd.h>
 #include <string.h>
 #include <libpmemobj.h>
-#include <bake-server.h>
+
+#include "bake-backend.h"
+
+extern bake_backend g_bake_pmem_backend;
+extern bake_backend g_bake_file_backend;
 
 struct options {
     char*  pmem_pool;
@@ -20,9 +24,10 @@ struct options {
 
 void usage(int argc, char* argv[])
 {
-    fprintf(stderr, "Usage: bake-mkpool [OPTIONS] <pmem_pool>\n");
+    fprintf(stderr, "Usage: bake-mkpool [OPTIONS] <path>\n");
     fprintf(stderr,
-            "       pmem_pool is the path to the pmemobj pool to create\n");
+            "       path may be a file, directory, or device depending on the "
+            "backend.\n");
     fprintf(stderr,
             "           (prepend pmem: or file: to specify backend format)\n");
     fprintf(stderr,
@@ -30,8 +35,8 @@ void usage(int argc, char* argv[])
             "specified size (K, M, G, etc. suffixes allowed)\n");
     fprintf(stderr, "Example: ./bake-mkpool -s 16M /dev/shm/foo.dat\n");
     fprintf(stderr,
-            "Note: if -s is not specified, then target file must already exist "
-            "with desired size.\n");
+            "-s may be omitted if backend supports extending space, or if pool "
+            "is being created on existing fixed-size device.\n");
     return;
 }
 
@@ -94,11 +99,6 @@ void parse_args(int argc, char* argv[], struct options* opts)
     return;
 }
 
-/* TODO: this is temporary until we have a more complete solution for admin
- * functions.
- */
-extern int bake_file_makepool(const char* file_name, size_t file_size);
-
 int main(int argc, char* argv[])
 {
     struct options opts;
@@ -118,9 +118,11 @@ int main(int argc, char* argv[])
     }
 
     if (strcmp(backend_type, "pmem") == 0) {
-        ret = bake_makepool(opts.pmem_pool, opts.pool_size);
+        ret = g_bake_pmem_backend._create_raw_target(opts.pmem_pool,
+                                                     opts.pool_size);
     } else if (strcmp(backend_type, "file") == 0) {
-        ret = bake_file_makepool(opts.pmem_pool, opts.pool_size);
+        ret = g_bake_file_backend._create_raw_target(opts.pmem_pool,
+                                                     opts.pool_size);
     } else {
         fprintf(stderr, "ERROR: unknown backend type \"%s\"\n", backend_type);
         free(backend_type);

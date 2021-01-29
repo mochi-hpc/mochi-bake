@@ -21,18 +21,6 @@ extern "C" {
 typedef struct bake_provider* bake_provider_t;
 
 /**
- * Creates a BAKE pool to use for backend PMEM storage.
- *
- * NOTE: This function must be called on a pool before the pool
- * can be passed to 'bake_provider_register'.
- *
- * @param[in] pool_name path to PMEM backend file
- * @param[in] pool_size size of the created pool
- * @returns 0 on success, -1 otherwise
- */
-int bake_makepool(const char* pool_name, size_t pool_size);
-
-/**
  * The bake_provider_init_info structure can be passed in to the
  * bake_provider_register() function to configure the provider. The struct
  * can be memset to zero to use default values.
@@ -134,6 +122,19 @@ int bake_provider_list_targets(bake_provider_t   provider,
  * @returns null terminated string that must be free'd by caller
  */
 char* bake_provider_get_config(bake_provider_t provider);
+
+/**
+ * Creates a raw storage target, not connected to a provider.  This would
+ * mainly be used by external utilities, not a server daemon itself.
+ *
+ * @param[in] path path to storage target (could be a file, directory, or
+ * device depending on the backend type)
+ * @param[in] size size of the created target (may be ignored for target
+ * types that can be extended or use a fixed size physical device)
+ *
+ * @returns 0 on success, -1 otherwise
+ */
+int bake_create_raw_target(const char* path, size_t size);
 
 #ifdef __cplusplus
 }

@@ -112,8 +112,7 @@ static int transfer_data(bake_file_entry_t* entry,
 
 static void xfer_ult(void* _args);
 
-/* TODO: reorganize this later into the "admin library" model */
-int bake_file_makepool(const char* file_name, size_t file_size)
+static int bake_file_makepool(const char* file_name, size_t file_size)
 {
     int          fd = -1;
     bake_root_t* root;
@@ -665,6 +664,7 @@ bake_backend g_bake_file_backend = {
     ._get_region_data           = bake_file_get_region_data,
     ._remove                    = bake_file_remove,
     ._migrate_region            = bake_file_migrate_region,
+    ._create_raw_target         = bake_file_makepool,
 #ifdef USE_REMI
     ._create_fileset = bake_file_create_fileset,
 #endif
