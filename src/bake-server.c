@@ -321,9 +321,9 @@ int bake_provider_destroy(bake_provider_t provider)
     return BAKE_SUCCESS;
 }
 
-int bake_provider_add_storage_target(bake_provider_t   provider,
-                                     const char*       target_name,
-                                     bake_target_id_t* target_id)
+int bake_provider_attach_target(bake_provider_t   provider,
+                                const char*       target_name,
+                                bake_target_id_t* target_id)
 {
     int               ret = BAKE_SUCCESS;
     bake_target_id_t  tid;
@@ -387,8 +387,8 @@ int bake_provider_add_storage_target(bake_provider_t   provider,
     return ret;
 }
 
-int bake_provider_remove_storage_target(bake_provider_t  provider,
-                                        bake_target_id_t target_id)
+int bake_provider_detach_target(bake_provider_t  provider,
+                                bake_target_id_t target_id)
 {
     int ret;
     ABT_rwlock_wrlock(provider->lock);
@@ -407,7 +407,7 @@ int bake_provider_remove_storage_target(bake_provider_t  provider,
     return ret;
 }
 
-int bake_provider_remove_all_storage_targets(bake_provider_t provider)
+int bake_provider_detach_all_targets(bake_provider_t provider)
 {
     ABT_rwlock_wrlock(provider->lock);
     bake_target_t *p, *tmp;
@@ -423,8 +423,7 @@ int bake_provider_remove_all_storage_targets(bake_provider_t provider)
     return BAKE_SUCCESS;
 }
 
-int bake_provider_count_storage_targets(bake_provider_t provider,
-                                        uint64_t*       num_targets)
+int bake_provider_count_targets(bake_provider_t provider, uint64_t* num_targets)
 {
     ABT_rwlock_rdlock(provider->lock);
     *num_targets = provider->num_targets;
@@ -432,8 +431,8 @@ int bake_provider_count_storage_targets(bake_provider_t provider,
     return BAKE_SUCCESS;
 }
 
-int bake_provider_list_storage_targets(bake_provider_t   provider,
-                                       bake_target_id_t* targets)
+int bake_provider_list_targets(bake_provider_t   provider,
+                               bake_target_id_t* targets)
 {
     ABT_rwlock_rdlock(provider->lock);
     bake_target_t *p, *tmp;
@@ -802,9 +801,9 @@ static void bake_probe_ult(hg_handle_t handle)
     }
 
     uint64_t targets_count;
-    bake_provider_count_storage_targets(provider, &targets_count);
+    bake_provider_count_targets(provider, &targets_count);
     bake_target_id_t targets[targets_count];
-    bake_provider_list_storage_targets(provider, targets);
+    bake_provider_list_targets(provider, targets);
 
     out.ret         = BAKE_SUCCESS;
     out.targets     = targets;
@@ -910,9 +909,7 @@ static void bake_migrate_target_ult(hg_handle_t handle)
 
     UNLOCK_PROVIDER;
     /* remove the target from the list of managed targets */
-    if (in.remove_src) {
-        bake_provider_remove_storage_target(provider, in.bti);
-    }
+    if (in.remove_src) { bake_provider_detach_target(provider, in.bti); }
     LOCK_PROVIDER;
 
     out.ret = BAKE_SUCCESS;
@@ -963,7 +960,7 @@ static void bake_server_finalize_cb(void* data)
     }
 #endif
 
-    bake_provider_remove_all_storage_targets(provider);
+    bake_provider_detach_all_targets(provider);
 
     json_object_put(provider->json_cfg);
 
@@ -992,7 +989,7 @@ static void migration_fileset_cb(const char* filename, void* arg)
     strcat(fullname, mig_args->root);
     strcat(fullname, filename);
     bake_target_id_t tid;
-    bake_provider_add_storage_target(mig_args->provider, fullname, &tid);
+    bake_provider_attach_target(mig_args->provider, fullname, &tid);
 }
 
 static void migration_metadata_cb(const char* key, const char* val, void* arg)

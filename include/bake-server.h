@@ -79,9 +79,9 @@ int bake_provider_destroy(bake_provider_t provider);
  *
  * @return 0 on success, -1 on failure
  */
-int bake_provider_add_storage_target(bake_provider_t   provider,
-                                     const char*       target_name,
-                                     bake_target_id_t* target_id);
+int bake_provider_attach_target(bake_provider_t   provider,
+                                const char*       target_name,
+                                bake_target_id_t* target_id);
 
 /**
  * Makes the provider stop managing a target.
@@ -91,8 +91,8 @@ int bake_provider_add_storage_target(bake_provider_t   provider,
  *
  * @return 0 on success, -1 on failure
  */
-int bake_provider_remove_storage_target(bake_provider_t  provider,
-                                        bake_target_id_t target_id);
+int bake_provider_detach_target(bake_provider_t  provider,
+                                bake_target_id_t target_id);
 
 /**
  * Removes all the targets associated with a provider.
@@ -101,7 +101,7 @@ int bake_provider_remove_storage_target(bake_provider_t  provider,
  *
  * @return 0 on success, -1 on failure
  */
-int bake_provider_remove_all_storage_targets(bake_provider_t provider);
+int bake_provider_detach_all_targets(bake_provider_t provider);
 
 /**
  * Returns the number of targets that this provider manages.
@@ -111,13 +111,13 @@ int bake_provider_remove_all_storage_targets(bake_provider_t provider);
  *
  * @return 0 on success, -1 on failure
  */
-int bake_provider_count_storage_targets(bake_provider_t provider,
-                                        uint64_t*       num_targets);
+int bake_provider_count_targets(bake_provider_t provider,
+                                uint64_t*       num_targets);
 
 /**
  * List the target ids of the targets managed by this provider.
  * The targets array must be pre-allocated with at least enough
- * space to hold all the targets (use bake_provider_count_storage_targets
+ * space to hold all the targets (use bake_provider_count_targets
  * to know how many storage targets are managed).
  *
  * @param provider Bake provider
@@ -125,8 +125,8 @@ int bake_provider_count_storage_targets(bake_provider_t provider,
  *
  * @return 0 on success, -1 on failure
  */
-int bake_provider_list_storage_targets(bake_provider_t   provider,
-                                       bake_target_id_t* targets);
+int bake_provider_list_targets(bake_provider_t   provider,
+                               bake_target_id_t* targets);
 
 /**
  * Retrieves complete configuration of bake provider, encoded as json

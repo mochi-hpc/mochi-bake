@@ -178,11 +178,11 @@ int main(int argc, char** argv)
                 return (-1);
             }
 
-            ret = bake_provider_add_storage_target(provider, opts.bake_pools[i],
-                                                   &tid);
+            ret = bake_provider_attach_target(provider, opts.bake_pools[i],
+                                              &tid);
 
             if (ret != 0) {
-                bake_perror("Error: bake_provider_add_storage_target()", ret);
+                bake_perror("Error: bake_provider_attach_target()", ret);
                 free(opts.bake_pools);
                 margo_finalize(mid);
                 return (-1);
@@ -221,11 +221,11 @@ int main(int argc, char** argv)
 
         for (i = 0; i < opts.num_pools; i++) {
             bake_target_id_t tid;
-            ret = bake_provider_add_storage_target(provider, opts.bake_pools[i],
-                                                   &tid);
+            ret = bake_provider_attach_target(provider, opts.bake_pools[i],
+                                              &tid);
 
             if (ret != 0) {
-                bake_perror("Error: bake_provider_add_storage_target()", ret);
+                bake_perror("Error: bake_provider_attach_target()", ret);
                 free(opts.bake_pools);
                 margo_finalize(mid);
                 return (-1);
