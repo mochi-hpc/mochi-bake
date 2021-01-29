@@ -135,6 +135,7 @@ int bake_provider_register(margo_instance_id                     mid,
         margo_get_handler_pool(mid, &(tmp_provider->handler_pool));
     }
 
+    /* create buffer poolset if needed for config */
     ret = setup_poolset(tmp_provider);
     if (ret != 0) {
         BAKE_ERROR(mid, "could not create poolset for pipelining");
@@ -142,8 +143,6 @@ int bake_provider_register(margo_instance_id                     mid,
         free(tmp_provider);
         return ret;
     }
-
-    /* create buffer poolset if needed for config */
 
     /* Create rwlock */
     ret = ABT_rwlock_create(&(tmp_provider->lock));
