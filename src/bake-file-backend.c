@@ -113,15 +113,13 @@ static int transfer_data(bake_file_entry_t* entry,
 static void xfer_ult(void* _args);
 
 /* TODO: reorganize this later into the "admin library" model */
-int bake_file_makepool(const char* file_name,
-                       size_t      file_size,
-                       mode_t      file_mode)
+int bake_file_makepool(const char* file_name, size_t file_size)
 {
     int          fd = -1;
     bake_root_t* root;
     int          ret;
 
-    fd = open(file_name, O_EXCL | O_WRONLY | O_CREAT | O_DIRECT, file_mode);
+    fd = open(file_name, O_EXCL | O_WRONLY | O_CREAT | O_DIRECT, 0644);
     if (fd < 0) {
         int save_errno = errno;
         perror("open");

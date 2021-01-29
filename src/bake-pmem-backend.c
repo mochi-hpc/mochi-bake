@@ -53,13 +53,13 @@ typedef struct xfer_args {
 
 static void xfer_ult(void* _args);
 
-int bake_makepool(const char* pool_name, size_t pool_size, mode_t pool_mode)
+int bake_makepool(const char* pool_name, size_t pool_size)
 {
     PMEMobjpool* pool;
     PMEMoid      root_oid;
     bake_root_t* root;
 
-    pool = pmemobj_create(pool_name, NULL, pool_size, pool_mode);
+    pool = pmemobj_create(pool_name, NULL, pool_size, 0644);
     if (!pool) {
         fprintf(stderr, "pmemobj_create: %s\n", pmemobj_errormsg());
         return BAKE_ERR_PMEM;

@@ -28,10 +28,9 @@ typedef struct bake_provider* bake_provider_t;
  *
  * @param[in] pool_name path to PMEM backend file
  * @param[in] pool_size size of the created pool
- * @param[in] pool_mode mode of the created pool
  * @returns 0 on success, -1 otherwise
  */
-int bake_makepool(const char* pool_name, size_t pool_size, mode_t pool_mode);
+int bake_makepool(const char* pool_name, size_t pool_size);
 
 /**
  * The bake_provider_init_info structure can be passed in to the

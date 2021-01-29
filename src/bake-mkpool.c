@@ -16,7 +16,6 @@
 struct options {
     char*  pmem_pool;
     size_t pool_size;
-    mode_t pool_mode;
 };
 
 void usage(int argc, char* argv[])
@@ -68,7 +67,6 @@ void parse_args(int argc, char* argv[], struct options* opts)
 
     /* set default options */
     memset(opts, 0, sizeof(*opts));
-    opts->pool_mode = 0664;
 
     /* get options */
     while ((opt = getopt(argc, argv, "s:")) != -1) {
@@ -99,8 +97,7 @@ void parse_args(int argc, char* argv[], struct options* opts)
 /* TODO: this is temporary until we have a more complete solution for admin
  * functions.
  */
-extern int
-bake_file_makepool(const char* file_name, size_t file_size, mode_t file_mode);
+extern int bake_file_makepool(const char* file_name, size_t file_size);
 
 int main(int argc, char* argv[])
 {
@@ -121,10 +118,9 @@ int main(int argc, char* argv[])
     }
 
     if (strcmp(backend_type, "pmem") == 0) {
-        ret = bake_makepool(opts.pmem_pool, opts.pool_size, opts.pool_mode);
+        ret = bake_makepool(opts.pmem_pool, opts.pool_size);
     } else if (strcmp(backend_type, "file") == 0) {
-        ret = bake_file_makepool(opts.pmem_pool, opts.pool_size,
-                                 opts.pool_mode);
+        ret = bake_file_makepool(opts.pmem_pool, opts.pool_size);
     } else {
         fprintf(stderr, "ERROR: unknown backend type \"%s\"\n", backend_type);
         free(backend_type);
