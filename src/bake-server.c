@@ -314,7 +314,7 @@ int bake_provider_register(margo_instance_id                     mid,
     return BAKE_SUCCESS;
 }
 
-int bake_provider_destroy(bake_provider_t provider)
+int bake_provider_deregister(bake_provider_t provider)
 {
     margo_provider_pop_finalize_callback(provider->mid, provider);
     bake_server_finalize_cb(provider);

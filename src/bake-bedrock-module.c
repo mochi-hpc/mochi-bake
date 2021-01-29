@@ -39,7 +39,7 @@ static int bake_deregister_provider(bedrock_module_provider_t provider)
 {
     int ret;
 
-    ret = bake_provider_destroy(provider);
+    ret = bake_provider_deregister(provider);
     if (ret < 0) return (-1);
 
     return BEDROCK_SUCCESS;

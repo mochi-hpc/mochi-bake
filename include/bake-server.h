@@ -59,13 +59,13 @@ int bake_provider_register(margo_instance_id                     mid,
                            bake_provider_t*                      provider);
 
 /**
- * @brief Deregisters and destroys the provider.
+ * @brief Deregisters the provider.
  *
- * @param provider Provider to deregister and destroy.
+ * @param provider Provider to deregister.
  *
  * @return 0 on success, -1 otherwise.
  */
-int bake_provider_destroy(bake_provider_t provider);
+int bake_provider_deregister(bake_provider_t provider);
 
 /**
  * Makes the provider start managing a target.
