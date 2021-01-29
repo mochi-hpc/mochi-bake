@@ -12,10 +12,7 @@
 #include <string.h>
 #include <libpmemobj.h>
 
-#include "bake-backend.h"
-
-extern bake_backend g_bake_pmem_backend;
-extern bake_backend g_bake_file_backend;
+#include "bake-server.h"
 
 struct options {
     char*  pmem_pool;
@@ -103,32 +100,10 @@ int main(int argc, char* argv[])
 {
     struct options opts;
     int            ret;
-    char*          backend_type = NULL;
 
     parse_args(argc, argv, &opts);
 
-    /* figure out the backend by searching until the ":" in the file name */
-    char* tmp = strchr(opts.pmem_pool, ':');
-    if (tmp != NULL) {
-        backend_type = strdup(opts.pmem_pool);
-        backend_type[(unsigned long)(tmp - opts.pmem_pool)] = '\0';
-        opts.pmem_pool                                      = tmp + 1;
-    } else {
-        backend_type = strdup("pmem");
-    }
+    ret = bake_create_raw_target(opts.pmem_pool, opts.pool_size);
 
-    if (strcmp(backend_type, "pmem") == 0) {
-        ret = g_bake_pmem_backend._create_raw_target(opts.pmem_pool,
-                                                     opts.pool_size);
-    } else if (strcmp(backend_type, "file") == 0) {
-        ret = g_bake_file_backend._create_raw_target(opts.pmem_pool,
-                                                     opts.pool_size);
-    } else {
-        fprintf(stderr, "ERROR: unknown backend type \"%s\"\n", backend_type);
-        free(backend_type);
-        return BAKE_ERR_BACKEND_TYPE;
-    }
-
-    free(backend_type);
     return (ret);
 }

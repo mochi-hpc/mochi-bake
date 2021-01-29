@@ -1077,3 +1077,32 @@ char* bake_provider_get_config(bake_provider_t provider)
         JSON_C_TO_STRING_PRETTY | JSON_C_TO_STRING_NOSLASHESCAPE);
     return strdup(content);
 }
+
+int bake_create_raw_target(const char* path, size_t size)
+{
+    char* backend_type = NULL;
+    int   ret;
+
+    /* figure out the backend by searching until the ":" in the file name */
+    char* tmp = strchr(path, ':');
+    if (tmp != NULL) {
+        backend_type                              = strdup(path);
+        backend_type[(unsigned long)(tmp - path)] = '\0';
+        path                                      = tmp + 1;
+    } else {
+        backend_type = strdup("pmem");
+    }
+
+    if (strcmp(backend_type, "pmem") == 0) {
+        ret = g_bake_pmem_backend._create_raw_target(path, size);
+    } else if (strcmp(backend_type, "file") == 0) {
+        ret = g_bake_file_backend._create_raw_target(path, size);
+    } else {
+        fprintf(stderr, "ERROR: unknown backend type \"%s\"\n", backend_type);
+        free(backend_type);
+        return BAKE_ERR_BACKEND_TYPE;
+    }
+
+    free(backend_type);
+    return (ret);
+}
