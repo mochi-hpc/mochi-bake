@@ -215,7 +215,7 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
     if (new_entry->log_fd < 0) {
         BAKE_ERROR(provider->mid, "open(): %s on %s",
                    strerror(-new_entry->log_fd), path);
-        ret = BAKE_ERR_IO;
+        ret = BAKE_ERR_NOENT;
         goto error_cleanup;
     }
 

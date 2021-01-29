@@ -55,16 +55,14 @@ int bake_provider_register(margo_instance_id                     mid,
 int bake_provider_deregister(bake_provider_t provider);
 
 /**
- * Makes the provider start managing a target.
- * The target must have been previously created with bake_makepool,
- * and it should not be managed by another provider (whether in this
- * proccess or another).
+ * Makes the provider start managing a target.  The target must have already
+ * been created in the past.
  *
  * @param provider Bake provider
  * @param target_name path to pmem target
  * @param target_id resulting id identifying the target
  *
- * @return 0 on success, -1 on failure
+ * @return BAKE_SUCCESS or BAKE_ERR*
  */
 int bake_provider_attach_target(bake_provider_t   provider,
                                 const char*       target_name,

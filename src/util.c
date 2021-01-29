@@ -51,6 +51,12 @@ static char* bake_err_str(int ret)
     case BAKE_ERR_OP_UNSUPPORTED:
         return "Operation not supported";
         break;
+    case BAKE_ERR_NOENT:
+        return "Entry does not exist";
+        break;
+    case BAKE_ERR_EXIST:
+        return "Entry already exists";
+        break;
     default:
         return "Unknown error";
         break;

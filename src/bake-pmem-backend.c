@@ -106,7 +106,7 @@ static int bake_pmem_backend_initialize(bake_provider_t    provider,
         free(new_context->filename);
         free(new_context->root);
         free(new_context);
-        return BAKE_ERR_PMEM;
+        return BAKE_ERR_NOENT;
     }
 
     /* check to make sure the root is properly set */
