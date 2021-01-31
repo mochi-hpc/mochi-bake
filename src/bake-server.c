@@ -1057,38 +1057,90 @@ static int setup_poolset(bake_provider_t provider)
     return BAKE_SUCCESS;
 }
 
+/* attach each target listed in the backend json block.  This fn assumes
+ * that backend has an array of strings called "targets"
+ */
+static int attach_targets(bake_provider_t     provider,
+                          const char*         prefix,
+                          struct json_object* backend)
+{
+    bake_target_id_t    tid;
+    int                 ret;
+    int                 i;
+    char**              target_names       = NULL;
+    int                 target_names_count = 0;
+    struct json_object* targets;
+    struct json_object* _target;
+
+    if (CONFIG_HAS(backend, "targets", targets)) {
+        target_names_count = json_object_array_length(targets);
+        target_names       = calloc(target_names_count, sizeof(*target_names));
+        if (!target_names) {
+            ret = BAKE_ERR_NOMEM;
+            goto error;
+        }
+
+        for (i = 0; i < target_names_count; i++) {
+            target_names[i] = malloc(256 * sizeof(char));
+            if (!target_names[i]) {
+                ret = BAKE_ERR_NOMEM;
+                goto error;
+            }
+        }
+
+        json_array_foreach(targets, i, _target)
+        {
+            BAKE_TRACE(provider->mid, "target[%u]: %s", i,
+                       json_object_get_string(_target));
+            snprintf(target_names[i], 256, "%s:%s", prefix,
+                     json_object_get_string(_target));
+        }
+        /* Delete array from parent json.  The array will be
+         * re-constructed as targets are attached.
+         */
+        json_object_object_del(backend, "targets");
+        for (i = 0; i < target_names_count; i++) {
+            ret = bake_provider_attach_target(provider, target_names[i], &tid);
+            if (ret == BAKE_ERR_NOENT) {
+                /* TODO: target does not exist; try to create it */
+                assert(0);
+            } else if (ret != BAKE_SUCCESS) {
+                goto error;
+            }
+            BAKE_INFO(provider->mid, "attached target %s", target_names[i]);
+            free(target_names[i]);
+        }
+        free(target_names);
+    }
+
+    return (0);
+
+error:
+    if (target_names) {
+        for (i = 0; i < target_names_count; i++) {
+            if (target_names[i]) free(target_names[i]);
+        }
+        free(target_names);
+    }
+    return (ret);
+}
+
 static int configure_targets(bake_provider_t     provider,
                              struct json_object* _config)
 {
     struct json_object* val;
-    struct json_object* targets;
-    struct json_object* _target;
-    unsigned            i = 0;
+    int                 ret;
 
     if (CONFIG_HAS(_config, "file_backend", val)) {
         BAKE_TRACE(provider->mid, "checking file_backend object in json");
-
-        if (CONFIG_HAS(val, "targets", targets)) {
-            json_array_foreach(targets, i, _target)
-            {
-                BAKE_TRACE(provider->mid, "target: %s",
-                           json_object_get_string(_target));
-            }
-        }
-        /* TODO: walk target list and try to attach or create */
+        ret = attach_targets(provider, "file", val);
+        if (ret != BAKE_SUCCESS) return (ret);
     }
 
     if (CONFIG_HAS(_config, "pmem_backend", val)) {
         BAKE_TRACE(provider->mid, "checking pmem_backend object in json");
-
-        if (CONFIG_HAS(val, "targets", targets)) {
-            json_array_foreach(targets, i, _target)
-            {
-                BAKE_TRACE(provider->mid, "target: %s",
-                           json_object_get_string(_target));
-            }
-        }
-        /* TODO: walk target list and try to attach or create */
+        ret = attach_targets(provider, "pmem", val);
+        if (ret != BAKE_SUCCESS) return (ret);
     }
 
     return (0);

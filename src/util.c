@@ -57,6 +57,9 @@ static char* bake_err_str(int ret)
     case BAKE_ERR_EXIST:
         return "Entry already exists";
         break;
+    case BAKE_ERR_NOMEM:
+        return "Out of memory";
+        break;
     default:
         return "Unknown error";
         break;

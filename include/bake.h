@@ -57,7 +57,8 @@ typedef struct {
 #define BAKE_ERR_IO             (-14) /* Back-end I/O error */
 #define BAKE_ERR_NOENT          (-15) /* entry does not exist */
 #define BAKE_ERR_EXIST          (-16) /* entry already exists */
-#define BAKE_ERR_END            (-17) /* End of valid bake error codes */
+#define BAKE_ERR_NOMEM          (-17) /* entry already exists */
+#define BAKE_ERR_END            (-18) /* End of valid bake error codes */
 
 /**
  * Print bake errors in human-friendly form
