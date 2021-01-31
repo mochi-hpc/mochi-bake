@@ -50,6 +50,8 @@ DECLARE_MARGO_RPC_HANDLER(bake_migrate_target_ult)
  */
 static int validate_and_complete_config(struct json_object* _config,
                                         ABT_pool            _progress_pool);
+static int configure_targets(bake_provider_t     provider,
+                             struct json_object* _config);
 static int setup_poolset(bake_provider_t provider);
 
 static bake_target_t* find_target_entry(bake_provider_t  provider,
@@ -302,6 +304,13 @@ int bake_provider_register(margo_instance_id                     mid,
     }
 #endif
 
+    /* Did the config include targets that we need to attach or create? */
+    ret = configure_targets(tmp_provider, config);
+    if (ret < 0) {
+        ret = BAKE_ERR_INVALID_ARG;
+        goto error;
+    }
+
     tmp_provider->json_cfg = config;
 
     /* install the bake server finalize callback */
@@ -311,6 +320,11 @@ int bake_provider_register(margo_instance_id                     mid,
     if (provider != BAKE_PROVIDER_IGNORE) *provider = tmp_provider;
 
     return BAKE_SUCCESS;
+
+error:
+
+    /* TODO: fill this in; this fn needs much better error handling */
+    return (ret);
 }
 
 int bake_provider_deregister(bake_provider_t provider)
@@ -1041,6 +1055,24 @@ static int setup_poolset(bake_provider_t provider)
     if (hret != 0) return BAKE_ERR_MERCURY;
 
     return BAKE_SUCCESS;
+}
+
+static int configure_targets(bake_provider_t     provider,
+                             struct json_object* _config)
+{
+    struct json_object* val;
+
+    if (CONFIG_HAS(_config, "file_backend", val)) {
+        BAKE_TRACE(provider->mid, "checking file_backend object in json");
+        /* TODO: walk target list and try to attach or create */
+    }
+
+    if (CONFIG_HAS(_config, "pmem_backend", val)) {
+        BAKE_TRACE(provider->mid, "checking pmem_backend object in json");
+        /* TODO: walk target list and try to attach or create */
+    }
+
+    return (0);
 }
 
 static int validate_and_complete_config(struct json_object* _config,

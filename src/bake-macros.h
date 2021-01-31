@@ -7,6 +7,8 @@
 #ifndef __BAKE_MACROS
 #define __BAKE_MACROS
 
+#include <json-c/json.h>
+
 static const int json_type_int64 = json_type_int;
 
 // Checks if a JSON object has a particular key and its value is of the
@@ -66,5 +68,10 @@ static const int json_type_int64 = json_type_int;
             json_object_object_add(__config, __key, __out);                   \
         }                                                                     \
     } while (0)
+
+// Can be used in configurations to check if a JSON object has a particular
+// field. If it does, the __out parameter is set to that field.
+#define CONFIG_HAS(__config, __key, __out) \
+    ((__out = json_object_object_get(__config, __key)) != NULL)
 
 #endif /* __BAKE_MACROS */

@@ -8,6 +8,7 @@
 
 #include "bake-server.h"
 #include "bake-client.h"
+#include "bake-macros.h"
 
 static int bake_register_provider(bedrock_args_t             args,
                                   bedrock_module_provider_t* provider)
