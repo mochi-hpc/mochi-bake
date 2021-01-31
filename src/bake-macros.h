@@ -74,4 +74,10 @@ static const int json_type_int64 = json_type_int;
 #define CONFIG_HAS(__config, __key, __out) \
     ((__out = json_object_object_get(__config, __key)) != NULL)
 
+#define json_array_foreach(__array, __index, __element)                \
+    for (__index = 0;                                                  \
+         __index < json_object_array_length(__array)                   \
+         && (__element = json_object_array_get_idx(__array, __index)); \
+         __index++)
+
 #endif /* __BAKE_MACROS */

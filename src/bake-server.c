@@ -1061,14 +1061,33 @@ static int configure_targets(bake_provider_t     provider,
                              struct json_object* _config)
 {
     struct json_object* val;
+    struct json_object* targets;
+    struct json_object* _target;
+    unsigned            i = 0;
 
     if (CONFIG_HAS(_config, "file_backend", val)) {
         BAKE_TRACE(provider->mid, "checking file_backend object in json");
+
+        if (CONFIG_HAS(val, "targets", targets)) {
+            json_array_foreach(targets, i, _target)
+            {
+                BAKE_TRACE(provider->mid, "target: %s",
+                           json_object_get_string(_target));
+            }
+        }
         /* TODO: walk target list and try to attach or create */
     }
 
     if (CONFIG_HAS(_config, "pmem_backend", val)) {
         BAKE_TRACE(provider->mid, "checking pmem_backend object in json");
+
+        if (CONFIG_HAS(val, "targets", targets)) {
+            json_array_foreach(targets, i, _target)
+            {
+                BAKE_TRACE(provider->mid, "target: %s",
+                           json_object_get_string(_target));
+            }
+        }
         /* TODO: walk target list and try to attach or create */
     }
 
