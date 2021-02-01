@@ -92,13 +92,15 @@ static int bake_pmem_backend_initialize(bake_provider_t    provider,
     new_context->root                     = strndup(path, d);
     struct json_object* pmem_backend_json = NULL;
     struct json_object* target_array      = NULL;
+    struct json_object* val               = NULL;
 
     CONFIG_HAS_OR_CREATE_OBJECT(provider->json_cfg, "pmem_backend",
                                 "pmem_backend", pmem_backend_json);
+    CONFIG_HAS_OR_CREATE(pmem_backend_json, int64,
+                         "default_initial_target_size", 1073741824,
+                         "pmem_backend.default_initial_target_size", val);
     CONFIG_HAS_OR_CREATE_ARRAY(pmem_backend_json, "targets",
                                "pmem_backend.targets", target_array);
-
-    /* TODO: populate tuning parameters specific to this backend */
 
     new_context->pmem_pool = pmemobj_open(path, NULL);
     if (!(new_context->pmem_pool)) {

@@ -1131,7 +1131,15 @@ static int attach_targets(bake_provider_t     provider,
     char**              target_names       = NULL;
     int                 target_names_count = 0;
     struct json_object* targets;
+    struct json_object* val;
     struct json_object* _target;
+    size_t              default_initial_target_size = 0;
+
+    if (CONFIG_HAS(backend, "default_initial_target_size", val)) {
+        default_initial_target_size = json_object_get_int(val);
+        BAKE_DEBUG(provider->mid, "default_initial_target_size: %lu",
+                   default_initial_target_size);
+    }
 
     if (CONFIG_HAS(backend, "targets", targets)) {
         target_names_count = json_object_array_length(targets);
@@ -1164,12 +1172,10 @@ static int attach_targets(bake_provider_t     provider,
             ret = bake_provider_attach_target(provider, target_names[i], &tid);
             if (ret == BAKE_ERR_NOENT) {
                 /* doesn't exist; attempt to create */
-                /* TODO: need a way to determine file size here.  Maybe a
-                 * default initial size specified in the provider json?
-                 */
                 BAKE_TRACE(provider->mid, "attempting to create target[%u]: %s",
                            i, target_names[i]);
-                ret = bake_provider_create_target(provider, target_names[i], 0,
+                ret = bake_provider_create_target(provider, target_names[i],
+                                                  default_initial_target_size,
                                                   &tid);
             }
             if (ret != BAKE_SUCCESS) { goto error; }
@@ -1195,17 +1201,26 @@ static int configure_targets(bake_provider_t     provider,
                              struct json_object* _config)
 {
     struct json_object* val;
+    struct json_object* backend;
     int                 ret;
 
-    if (CONFIG_HAS(_config, "file_backend", val)) {
+    if (CONFIG_HAS(_config, "file_backend", backend)) {
         BAKE_TRACE(provider->mid, "checking file_backend object in json");
-        ret = attach_targets(provider, "file", val);
+        ret = attach_targets(provider, "file", backend);
         if (ret != BAKE_SUCCESS) return (ret);
     }
 
-    if (CONFIG_HAS(_config, "pmem_backend", val)) {
+    if (CONFIG_HAS(_config, "pmem_backend", backend)) {
+        /* NOTE: the following configuration default setting is duplicated
+         * in the pmem backend as well.  We need it early here to make sure
+         * that if any pmem targets are created from scratch then we know
+         * what size to make them.
+         */
+        CONFIG_HAS_OR_CREATE(backend, int64, "default_initial_target_size",
+                             1073741824,
+                             "pmem_backend.default_initial_target_size", val);
         BAKE_TRACE(provider->mid, "checking pmem_backend object in json");
-        ret = attach_targets(provider, "pmem", val);
+        ret = attach_targets(provider, "pmem", backend);
         if (ret != BAKE_SUCCESS) return (ret);
     }
 
