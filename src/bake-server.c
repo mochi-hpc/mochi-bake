@@ -75,10 +75,11 @@ int bake_provider_register(margo_instance_id                     mid,
                            const struct bake_provider_init_info* uargs,
                            bake_provider_t*                      provider)
 {
-    struct bake_provider_init_info args = *uargs;
-    bake_provider*                 tmp_provider;
+    struct bake_provider_init_info args         = *uargs;
+    bake_provider*                 tmp_provider = NULL;
     int                            ret;
-    struct json_object*            config = NULL;
+    struct json_object*            config                   = NULL;
+    int                            configuring_targets_flag = 0;
 
     /* check if a provider with the same provider id already exists */
     {
@@ -92,7 +93,8 @@ int bake_provider_register(margo_instance_id                     mid,
                 "bake_provider_register(): a bake provider with the same "
                 "id (%d) already exists",
                 provider_id);
-            return BAKE_ERR_MERCURY;
+            ret = BAKE_ERR_MERCURY;
+            goto error;
         }
     }
 
@@ -108,7 +110,8 @@ int bake_provider_register(margo_instance_id                     mid,
             BAKE_ERROR(mid, "JSON parse error: %s",
                        json_tokener_error_desc(jerr));
             json_tokener_free(tokener);
-            return BAKE_ERR_INVALID_ARG;
+            ret = BAKE_ERR_INVALID_ARG;
+            goto error;
         }
         json_tokener_free(tokener);
     } else {
@@ -120,13 +123,16 @@ int bake_provider_register(margo_instance_id                     mid,
     ret = validate_and_complete_config(config, args.rpc_pool);
     if (ret != 0) {
         BAKE_ERROR(mid, "could not validate and complete configuration");
-        json_object_put(config);
-        return BAKE_ERR_INVALID_ARG;
+        ret = BAKE_ERR_INVALID_ARG;
+        goto error;
     }
 
     /* allocate the resulting structure */
     tmp_provider = calloc(1, sizeof(*tmp_provider));
-    if (!tmp_provider) return BAKE_ERR_ALLOCATION;
+    if (!tmp_provider) {
+        ret = BAKE_ERR_NOMEM;
+        goto error;
+    }
 
     tmp_provider->json_cfg = config;
 
@@ -141,16 +147,14 @@ int bake_provider_register(margo_instance_id                     mid,
     ret = setup_poolset(tmp_provider);
     if (ret != 0) {
         BAKE_ERROR(mid, "could not create poolset for pipelining");
-        json_object_put(config);
-        free(tmp_provider);
-        return ret;
+        goto error;
     }
 
     /* Create rwlock */
     ret = ABT_rwlock_create(&(tmp_provider->lock));
     if (ret != ABT_SUCCESS) {
-        free(tmp_provider);
-        return BAKE_ERR_ARGOBOTS;
+        ret = BAKE_ERR_ARGOBOTS;
+        goto error;
     }
 
     /* register RPCs */
@@ -269,8 +273,8 @@ int bake_provider_register(margo_instance_id                     mid,
     ret = remi_client_init(mid, ABT_IO_INSTANCE_NULL,
                            &(tmp_provider->remi_client));
     if (ret != REMI_SUCCESS) {
-        // XXX unregister RPCs, cleanup tmp_provider before returning
-        return BAKE_ERR_REMI;
+        ret = BAKE_ERR_REMI;
+        goto error;
     }
 
     /* register a REMI provider */
@@ -289,8 +293,8 @@ int bake_provider_register(margo_instance_id                     mid,
                                          tmp_provider->handler_pool,
                                          &(tmp_provider->remi_provider));
             if (ret != REMI_SUCCESS) {
-                // XXX unregister RPCs, cleanup tmp_provider before returning
-                return BAKE_ERR_REMI;
+                ret = BAKE_ERR_REMI;
+                goto error;
             }
             tmp_provider->owns_remi_provider = 1;
         }
@@ -298,14 +302,15 @@ int bake_provider_register(margo_instance_id                     mid,
             tmp_provider->remi_provider, "bake", NULL,
             bake_target_post_migration_callback, NULL, tmp_provider);
         if (ret != REMI_SUCCESS) {
-            // XXX unregister RPCs, cleanup tmp_provider before returning
-            return BAKE_ERR_REMI;
+            ret = BAKE_ERR_REMI;
+            goto error;
         }
     }
 #endif
 
     /* Did the config include targets that we need to attach or create? */
-    ret = configure_targets(tmp_provider, config);
+    configuring_targets_flag = 1;
+    ret                      = configure_targets(tmp_provider, config);
     if (ret < 0) {
         ret = BAKE_ERR_INVALID_ARG;
         goto error;
@@ -323,7 +328,47 @@ int bake_provider_register(margo_instance_id                     mid,
 
 error:
 
-    /* TODO: fill this in; this fn needs much better error handling */
+    if (configuring_targets_flag) {
+        /* we might have auto attached targets that need to be detached now */
+        bake_provider_detach_all_targets(tmp_provider);
+    }
+
+    if (tmp_provider && tmp_provider->rpc_create_id) {
+        margo_deregister(mid, tmp_provider->rpc_create_id);
+        margo_deregister(mid, tmp_provider->rpc_write_id);
+        margo_deregister(mid, tmp_provider->rpc_eager_write_id);
+        margo_deregister(mid, tmp_provider->rpc_persist_id);
+        margo_deregister(mid, tmp_provider->rpc_create_write_persist_id);
+        margo_deregister(mid, tmp_provider->rpc_eager_create_write_persist_id);
+        margo_deregister(mid, tmp_provider->rpc_get_size_id);
+        margo_deregister(mid, tmp_provider->rpc_get_data_id);
+        margo_deregister(mid, tmp_provider->rpc_read_id);
+        margo_deregister(mid, tmp_provider->rpc_eager_read_id);
+        margo_deregister(mid, tmp_provider->rpc_probe_id);
+        margo_deregister(mid, tmp_provider->rpc_noop_id);
+        margo_deregister(mid, tmp_provider->rpc_remove_id);
+        margo_deregister(mid, tmp_provider->rpc_migrate_region_id);
+        margo_deregister(mid, tmp_provider->rpc_migrate_target_id);
+    }
+
+#ifdef USE_REMI
+    if (tmp_provider && tmp_provider->remi_client) {
+        remi_client_finalize(tmp_provider->remi_client);
+        if (tmp_provider->owns_remi_provider) {
+            remi_provider_destroy(tmp_provider->remi_provider);
+        }
+    }
+#endif
+
+    if (config) json_object_put(config);
+
+    if (tmp_provider) {
+        if (tmp_provider->poolset)
+            margo_bulk_poolset_destroy(tmp_provider->poolset);
+        if (tmp_provider->lock) ABT_rwlock_free(&(tmp_provider->lock));
+        free(tmp_provider);
+    }
+
     return (ret);
 }
 
@@ -448,7 +493,6 @@ int bake_provider_detach_all_targets(bake_provider_t provider)
         free(p);
     }
     provider->num_targets = 0;
-    margo_bulk_poolset_destroy(provider->poolset);
     ABT_rwlock_unlock(provider->lock);
     return BAKE_SUCCESS;
 }
