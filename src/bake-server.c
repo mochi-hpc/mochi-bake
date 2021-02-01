@@ -1107,8 +1107,6 @@ static int attach_targets(bake_provider_t     provider,
 
         json_array_foreach(targets, i, _target)
         {
-            BAKE_TRACE(provider->mid, "target[%u]: %s", i,
-                       json_object_get_string(_target));
             snprintf(target_names[i], 256, "%s:%s", prefix,
                      json_object_get_string(_target));
         }
@@ -1117,12 +1115,16 @@ static int attach_targets(bake_provider_t     provider,
          */
         json_object_object_del(backend, "targets");
         for (i = 0; i < target_names_count; i++) {
+            BAKE_TRACE(provider->mid, "attempting to attach target[%u]: %s", i,
+                       target_names[i]);
             ret = bake_provider_attach_target(provider, target_names[i], &tid);
             if (ret == BAKE_ERR_NOENT) {
                 /* doesn't exist; attempt to create */
                 /* TODO: need a way to determine file size here.  Maybe a
                  * default initial size specified in the provider json?
                  */
+                BAKE_TRACE(provider->mid, "attempting to create target[%u]: %s",
+                           i, target_names[i]);
                 ret = bake_provider_create_target(provider, target_names[i], 0,
                                                   &tid);
             }
