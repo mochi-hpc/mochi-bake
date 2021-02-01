@@ -69,6 +69,22 @@ int bake_provider_attach_target(bake_provider_t   provider,
                                 bake_target_id_t* target_id);
 
 /**
+ * Create a new target that did not yet exist and begin managing it.
+ *
+ * @param provider Bake provider
+ * @param target_name path to pmem target
+ * @param[in] size size of the created target (may be ignored for target
+ * types that can be extended or use a fixed size physical device)
+ * @param target_id resulting id identifying the target
+ *
+ * @return BAKE_SUCCESS or BAKE_ERR*
+ */
+int bake_provider_create_target(bake_provider_t   provider,
+                                const char*       target_name,
+                                size_t            size,
+                                bake_target_id_t* target_id);
+
+/**
  * Makes the provider stop managing a target.
  *
  * @param provider Bake provider

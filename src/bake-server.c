@@ -334,6 +334,23 @@ int bake_provider_deregister(bake_provider_t provider)
     return BAKE_SUCCESS;
 }
 
+int bake_provider_create_target(bake_provider_t   provider,
+                                const char*       target_name,
+                                size_t            size,
+                                bake_target_id_t* target_id)
+{
+    int ret;
+
+    /* create the actual target */
+    ret = bake_create_raw_target(target_name, size);
+    if (ret < 0) return (ret);
+
+    /* begin managing it */
+    ret = bake_provider_attach_target(provider, target_name, target_id);
+
+    return (ret);
+}
+
 int bake_provider_attach_target(bake_provider_t   provider,
                                 const char*       target_name,
                                 bake_target_id_t* target_id)
@@ -1102,11 +1119,14 @@ static int attach_targets(bake_provider_t     provider,
         for (i = 0; i < target_names_count; i++) {
             ret = bake_provider_attach_target(provider, target_names[i], &tid);
             if (ret == BAKE_ERR_NOENT) {
-                /* TODO: target does not exist; try to create it */
-                assert(0);
-            } else if (ret != BAKE_SUCCESS) {
-                goto error;
+                /* doesn't exist; attempt to create */
+                /* TODO: need a way to determine file size here.  Maybe a
+                 * default initial size specified in the provider json?
+                 */
+                ret = bake_provider_create_target(provider, target_names[i], 0,
+                                                  &tid);
             }
+            if (ret != BAKE_SUCCESS) { goto error; }
             BAKE_INFO(provider->mid, "attached target %s", target_names[i]);
             free(target_names[i]);
         }
