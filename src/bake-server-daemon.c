@@ -101,6 +101,8 @@ int main(int argc, char** argv)
     struct options    opts;
     margo_instance_id mid;
     int               ret;
+    char*             show_conf = NULL;
+    bake_provider_t   provider;
 
     parse_args(argc, argv, &opts);
 
@@ -158,11 +160,9 @@ int main(int argc, char** argv)
     if (opts.mplex_mode == MODE_PROVIDERS) {
         int i;
         for (i = 0; i < opts.num_pools; i++) {
-            bake_provider_t                provider;
             bake_target_id_t               tid;
             struct bake_provider_init_info bpargs           = {0};
             char                           json_config[256] = {0};
-            char*                          show_conf        = NULL;
 
             if (opts.pipeline_enabled) {
                 sprintf(json_config, "{\"pipeline_enable\": true}");
@@ -190,20 +190,13 @@ int main(int argc, char** argv)
 
             printf("Provider %d managing new target at multiplex id %d\n", i,
                    i + 1);
-            printf("Bake provider config:\n");
-            printf("=====================\n");
-            show_conf = bake_provider_get_config(provider);
-            printf("%s\n", show_conf);
-            free(show_conf);
         }
 
     } else {
 
         int                            i;
-        bake_provider_t                provider;
         struct bake_provider_init_info bpargs           = {0};
         char                           json_config[256] = {0};
-        char*                          show_conf        = NULL;
 
         if (opts.pipeline_enabled) {
             sprintf(json_config, "{\"pipeline_enable\": true}");
@@ -233,12 +226,13 @@ int main(int argc, char** argv)
 
             printf("Provider 0 managing new target at multiplex id %d\n", 1);
         }
-        printf("Bake provider config:\n");
-        printf("=====================\n");
-        show_conf = bake_provider_get_config(provider);
-        printf("%s\n", show_conf);
-        free(show_conf);
     }
+
+    printf("Bake provider config:\n");
+    printf("=====================\n");
+    show_conf = bake_provider_get_config(provider);
+    printf("%s\n", show_conf);
+    free(show_conf);
 
     /* suspend until the BAKE server gets a shutdown signal from the client */
     margo_wait_for_finalize(mid);
