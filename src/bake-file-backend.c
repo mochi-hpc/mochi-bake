@@ -190,25 +190,35 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
     CONFIG_HAS_OR_CREATE(file_backend_json, int64, "alignment", 4096,
                          "file_backend.alignment", val);
 
-    /* nthreads for abtio */
-    /* TODO: add ability to pass this in from bedrock and/or report abtio
-     * json */
-    CONFIG_HAS_OR_CREATE(file_backend_json, int64, "abtio_nthreads", 16,
-                         "file_backend.abtio_nthreads", val);
+    /* you can't pass in an existing abt-io instance _and_ request one with
+     * a particular thread count.
+     */
+    if (provider->aid && CONFIG_HAS(file_backend_json, "abtio_nthreads", val)) {
+        BAKE_ERROR(provider->mid,
+                   "cannot pass in abt-io instance and also specify explicit "
+                   "\"abtio_nthreads\" setting in json");
+        ret = BAKE_ERR_INVALID_ARG;
+        goto error_cleanup;
+    } else if (provider->aid) {
+        new_entry->abtioi = provider->aid;
+    } else {
+        CONFIG_HAS_OR_CREATE(file_backend_json, int64, "abtio_nthreads", 16,
+                             "file_backend.abtio_nthreads", val);
+
+        /* initialize an abt-io instance just for this target */
+        new_entry->abtioi = abt_io_init(json_object_get_int(
+            json_object_object_get(file_backend_json, "abtio_nthreads")));
+        if (!new_entry->abtioi) {
+            ret = BAKE_ERR_IO;
+            goto error_cleanup;
+        }
+    }
 
     tmp = strrchr(path, '/');
     if (!tmp) tmp = path;
     new_entry->filename = strdup(tmp);
     d                   = tmp - path;
     new_entry->root     = strndup(path, d);
-
-    /* initialize an abt-io instance just for this target */
-    new_entry->abtioi = abt_io_init(json_object_get_int(
-        json_object_object_get(file_backend_json, "abtio_nthreads")));
-    if (!new_entry->abtioi) {
-        ret = BAKE_ERR_IO;
-        goto error_cleanup;
-    }
 
     new_entry->log_fd
         = abt_io_open(new_entry->abtioi, path, O_RDWR | O_DIRECT, 0);
@@ -285,7 +295,8 @@ error_cleanup:
     if (new_entry) {
         if (new_entry->file_root) free(new_entry->file_root);
         if (new_entry->log_fd > -1) close(new_entry->log_fd);
-        if (new_entry->abtioi) abt_io_finalize(new_entry->abtioi);
+        if (new_entry->abtioi && new_entry->abtioi != provider->aid)
+            abt_io_finalize(new_entry->abtioi);
         if (new_entry->filename) free(new_entry->filename);
         if (new_entry->root) free(new_entry->root);
         free(new_entry);
@@ -299,7 +310,8 @@ static int bake_file_backend_finalize(backend_context_t context)
     bake_file_entry_t* entry = (bake_file_entry_t*)context;
     free(entry->file_root);
     close(entry->log_fd);
-    abt_io_finalize(entry->abtioi);
+    if (entry->abtioi && entry->abtioi != entry->provider->aid)
+        abt_io_finalize(entry->abtioi);
     free(entry->filename);
     free(entry->root);
     free(entry);

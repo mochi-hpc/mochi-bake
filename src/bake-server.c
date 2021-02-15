@@ -135,6 +135,7 @@ int bake_provider_register(margo_instance_id                     mid,
     }
 
     tmp_provider->json_cfg = config;
+    tmp_provider->aid      = args.aid;
 
     tmp_provider->mid = mid;
     if (args.rpc_pool != NULL)

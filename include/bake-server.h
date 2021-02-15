@@ -7,6 +7,7 @@
 #ifndef __BAKE_SERVER_H
 #define __BAKE_SERVER_H
 
+#include <abt-io.h>
 #include <margo.h>
 #include <libpmemobj.h>
 #include <bake.h>
@@ -26,8 +27,9 @@ typedef struct bake_provider* bake_provider_t;
  * can be memset to zero to use default values.
  */
 struct bake_provider_init_info {
-    const char* json_config; /* JSON-formatted string */
-    ABT_pool    rpc_pool;    /* pool on which to run RPC handlers */
+    const char*        json_config; /* JSON-formatted string */
+    ABT_pool           rpc_pool;    /* pool on which to run RPC handlers */
+    abt_io_instance_id aid; /* optional abt-io instance, used by file backend */
 };
 
 /**

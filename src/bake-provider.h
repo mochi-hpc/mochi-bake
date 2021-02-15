@@ -36,6 +36,8 @@ typedef struct bake_provider {
     // but we are going with that for simplicity for now.
     uint64_t       num_targets;
     bake_target_t* targets;
+    abt_io_instance_id
+        aid; /* externally provided abt-io instance, if present */
     hg_id_t
         bake_create_write_persist_id; // <-- this is a client version of the id
 

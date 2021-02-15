@@ -63,8 +63,7 @@
                 "targets":[
                   "./file-target-A.dat"
                 ],
-                "alignment":4096,
-                "abtio_nthreads":16
+                "alignment":4096
               },
               "pmem_backend":{
                 "targets":[

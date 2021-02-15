@@ -18,13 +18,13 @@ static int bake_register_provider(bedrock_args_t             args,
     int                            ret;
     struct bake_provider_init_info bpargs = {0};
     margo_instance_id              mid = bedrock_args_get_margo_instance(args);
-    uint16_t           provider_id     = bedrock_args_get_provider_id(args);
-    ABT_pool           pool            = bedrock_args_get_pool(args);
-    const char*        config          = bedrock_args_get_config(args);
-    const char*        name            = bedrock_args_get_name(args);
-    abt_io_instance_id abtio = bedrock_args_get_dependency(args, "abt_io", 0);
+    uint16_t    provider_id            = bedrock_args_get_provider_id(args);
+    ABT_pool    pool                   = bedrock_args_get_pool(args);
+    const char* config                 = bedrock_args_get_config(args);
+    const char* name                   = bedrock_args_get_name(args);
+    bpargs.aid = bedrock_args_get_dependency(args, "abt_io", 0);
 
-    if (abtio)
+    if (bpargs.aid)
         BAKE_DEBUG(mid, "got abt-io instance");
     else
         BAKE_DEBUG(mid, "did not get abt-io instance");
@@ -106,8 +106,13 @@ static int bake_destroy_provider_handle(bedrock_module_provider_handle_t ph)
     return BEDROCK_SUCCESS;
 }
 
+/* an optional abt-io dependency can be specified
+ * - only used by some backends (the file one, specifically)
+ * - if needed by not provided as a dependency, then the backend will create
+ *   one of it's own implicitly
+ */
 struct bedrock_dependency bake_deps[2]
-    = {{"abt_io", "abt_io", BEDROCK_REQUIRED}, BEDROCK_NO_MORE_DEPENDENCIES};
+    = {{"abt_io", "abt_io", 0}, BEDROCK_NO_MORE_DEPENDENCIES};
 
 static struct bedrock_module bake
     = {.register_provider       = bake_register_provider,
