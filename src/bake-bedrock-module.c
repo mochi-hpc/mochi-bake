@@ -106,6 +106,9 @@ static int bake_destroy_provider_handle(bedrock_module_provider_handle_t ph)
     return BEDROCK_SUCCESS;
 }
 
+struct bedrock_dependency bake_deps[2]
+    = {{"abt_io", "abt_io", BEDROCK_REQUIRED}, BEDROCK_NO_MORE_DEPENDENCIES};
+
 static struct bedrock_module bake
     = {.register_provider       = bake_register_provider,
        .deregister_provider     = bake_deregister_provider,
@@ -114,6 +117,6 @@ static struct bedrock_module bake
        .finalize_client         = bake_finalize_client,
        .create_provider_handle  = bake_create_provider_handle,
        .destroy_provider_handle = bake_destroy_provider_handle,
-       .dependencies            = NULL};
+       .dependencies            = bake_deps};
 
 BEDROCK_REGISTER_MODULE(bake, bake)
