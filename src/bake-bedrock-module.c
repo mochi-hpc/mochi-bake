@@ -3,8 +3,10 @@
  *
  * See COPYRIGHT in top-level directory.
  */
-#include <bedrock/module.h>
+
 #include <string.h>
+#include <bedrock/module.h>
+#include <abt-io.h>
 
 #include "bake-server.h"
 #include "bake-client.h"
@@ -16,10 +18,16 @@ static int bake_register_provider(bedrock_args_t             args,
     int                            ret;
     struct bake_provider_init_info bpargs = {0};
     margo_instance_id              mid = bedrock_args_get_margo_instance(args);
-    uint16_t    provider_id            = bedrock_args_get_provider_id(args);
-    ABT_pool    pool                   = bedrock_args_get_pool(args);
-    const char* config                 = bedrock_args_get_config(args);
-    const char* name                   = bedrock_args_get_name(args);
+    uint16_t           provider_id     = bedrock_args_get_provider_id(args);
+    ABT_pool           pool            = bedrock_args_get_pool(args);
+    const char*        config          = bedrock_args_get_config(args);
+    const char*        name            = bedrock_args_get_name(args);
+    abt_io_instance_id abtio = bedrock_args_get_dependency(args, "abt_io", 0);
+
+    if (abtio)
+        BAKE_DEBUG(mid, "got abt-io instance");
+    else
+        BAKE_DEBUG(mid, "did not get abt-io instance");
 
     BAKE_TRACE(mid, "bake_register_provider()");
     BAKE_INFO(mid, " -> mid         = %p", (void*)mid);
