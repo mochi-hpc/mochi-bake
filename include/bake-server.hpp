@@ -70,13 +70,15 @@ class provider {
                             ABT_pool           pool        = ABT_POOL_NULL,
                             const std::string& config      = "",
                             abt_io_instance_id abtio = ABT_IO_INSTANCE_NULL,
-                            void*              remi  = NULL)
+                            void*              remi_provider = NULL,
+                            void*              remi_client   = NULL)
     {
         bake_provider_init_info args = BAKE_PROVIDER_INIT_INFO_INITIALIZER;
         args.json_config             = config.c_str();
         args.rpc_pool                = pool;
         args.aid                     = abtio;
-        args.remi_provider           = remi;
+        args.remi_provider           = remi_provider;
+        args.remi_client             = remi_client;
         return create(mid, provider_id, &args);
     }
 

@@ -34,7 +34,13 @@ static int bake_register_provider(bedrock_args_t             args,
             = bedrock_args_get_dependency(args, "remi_provider", 0);
     } else {
         bpargs.remi_provider = NULL;
-        ;
+    }
+
+    if (bedrock_args_get_num_dependencies(args, "remi_client")) {
+        bpargs.remi_client
+            = bedrock_args_get_dependency(args, "remi_client", 0);
+    } else {
+        bpargs.remi_client = NULL;
     }
 
     BAKE_TRACE(mid, "bake_register_provider()");
@@ -45,6 +51,7 @@ static int bake_register_provider(bedrock_args_t             args,
     BAKE_TRACE(mid, " -> name          = %s", name);
     BAKE_TRACE(mid, " -> abt_io        = %p", bpargs.aid);
     BAKE_TRACE(mid, " -> remi_provider = %p", bpargs.remi_provider);
+    BAKE_TRACE(mid, " -> remi_client   = %p", bpargs.remi_client);
 
     bpargs.json_config = config;
     ret                = bake_provider_register(mid, provider_id, &bpargs,
@@ -121,8 +128,9 @@ static int bake_destroy_provider_handle(bedrock_module_provider_handle_t ph)
  * - if needed by not provided as a dependency, then the backend will create
  *   one of it's own implicitly
  */
-struct bedrock_dependency bake_deps[3] = {{"abt_io", "abt_io", 0},
+struct bedrock_dependency bake_deps[4] = {{"abt_io", "abt_io", 0},
                                           {"remi_provider", "remi", 0},
+                                          {"remi_client", "remi", 0},
                                           BEDROCK_NO_MORE_DEPENDENCIES};
 
 static struct bedrock_module bake

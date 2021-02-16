@@ -31,11 +31,12 @@ struct bake_provider_init_info {
     ABT_pool    rpc_pool;    /* optional pool on which to run RPC handlers */
     abt_io_instance_id aid; /* optional abt-io instance, used by file backend */
     void*              remi_provider; /* optional REMI provider */
+    void*              remi_client;   /* optional REMI client */
 };
 
-#define BAKE_PROVIDER_INIT_INFO_INITIALIZER             \
-    {                                                   \
-        NULL, ABT_POOL_NULL, ABT_IO_INSTANCE_NULL, NULL \
+#define BAKE_PROVIDER_INIT_INFO_INITIALIZER                   \
+    {                                                         \
+        NULL, ABT_POOL_NULL, ABT_IO_INSTANCE_NULL, NULL, NULL \
     }
 
 /**
