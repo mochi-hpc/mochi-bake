@@ -27,10 +27,16 @@ typedef struct bake_provider* bake_provider_t;
  * can be memset to zero to use default values.
  */
 struct bake_provider_init_info {
-    const char*        json_config; /* JSON-formatted string */
-    ABT_pool           rpc_pool;    /* pool on which to run RPC handlers */
+    const char* json_config; /* optional JSON-formatted string */
+    ABT_pool    rpc_pool;    /* optional pool on which to run RPC handlers */
     abt_io_instance_id aid; /* optional abt-io instance, used by file backend */
+    void*              remi_provider; /* optional REMI provider */
 };
+
+#define BAKE_PROVIDER_INIT_INFO_INITIALIZER             \
+    {                                                   \
+        NULL, ABT_POOL_NULL, ABT_IO_INSTANCE_NULL, NULL \
+    }
 
 /**
  * Initializes a BAKE provider.
