@@ -22,19 +22,29 @@ static int bake_register_provider(bedrock_args_t             args,
     ABT_pool    pool                   = bedrock_args_get_pool(args);
     const char* config                 = bedrock_args_get_config(args);
     const char* name                   = bedrock_args_get_name(args);
-    bpargs.aid = bedrock_args_get_dependency(args, "abt_io", 0);
 
-    if (bpargs.aid)
-        BAKE_DEBUG(mid, "got abt-io instance");
-    else
-        BAKE_DEBUG(mid, "did not get abt-io instance");
+    if (bedrock_args_get_num_dependencies(args, "abt_io")) {
+        bpargs.aid = bedrock_args_get_dependency(args, "abt_io", 0);
+    } else {
+        bpargs.aid = ABT_IO_INSTANCE_NULL;
+    }
+
+    if (bedrock_args_get_num_dependencies(args, "remi_provider")) {
+        bpargs.remi_provider
+            = bedrock_args_get_dependency(args, "remi_provider", 0);
+    } else {
+        bpargs.remi_provider = NULL;
+        ;
+    }
 
     BAKE_TRACE(mid, "bake_register_provider()");
-    BAKE_INFO(mid, " -> mid         = %p", (void*)mid);
-    BAKE_INFO(mid, " -> provider id = %d", provider_id);
-    BAKE_INFO(mid, " -> pool        = %p", (void*)pool);
-    BAKE_INFO(mid, " -> config      = %s", config);
-    BAKE_INFO(mid, " -> name        = %s", name);
+    BAKE_TRACE(mid, " -> mid           = %p", (void*)mid);
+    BAKE_TRACE(mid, " -> provider id   = %d", provider_id);
+    BAKE_TRACE(mid, " -> pool          = %p", (void*)pool);
+    BAKE_TRACE(mid, " -> config        = %s", config);
+    BAKE_TRACE(mid, " -> name          = %s", name);
+    BAKE_TRACE(mid, " -> abt_io        = %p", bpargs.aid);
+    BAKE_TRACE(mid, " -> remi_provider = %p", bpargs.remi_provider);
 
     bpargs.json_config = config;
     ret                = bake_provider_register(mid, provider_id, &bpargs,
@@ -111,8 +121,9 @@ static int bake_destroy_provider_handle(bedrock_module_provider_handle_t ph)
  * - if needed by not provided as a dependency, then the backend will create
  *   one of it's own implicitly
  */
-struct bedrock_dependency bake_deps[2]
-    = {{"abt_io", "abt_io", 0}, BEDROCK_NO_MORE_DEPENDENCIES};
+struct bedrock_dependency bake_deps[3] = {{"abt_io", "abt_io", 0},
+                                          {"remi_provider", "remi", 0},
+                                          BEDROCK_NO_MORE_DEPENDENCIES};
 
 static struct bedrock_module bake
     = {.register_provider       = bake_register_provider,
