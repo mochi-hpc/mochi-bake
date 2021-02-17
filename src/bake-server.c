@@ -269,36 +269,10 @@ int bake_provider_register(margo_instance_id                     mid,
     }
 
 #ifdef USE_REMI
-    /* register a REMI client */
-    // TODO actually use an ABT-IO instance
-    ret = remi_client_init(mid, ABT_IO_INSTANCE_NULL,
-                           &(tmp_provider->remi_client));
-    if (ret != REMI_SUCCESS) {
-        ret = BAKE_ERR_REMI;
-        goto error;
-    }
+    tmp_provider->remi_client   = (remi_client_t)args.remi_client;
+    tmp_provider->remi_provider = (remi_provider_t)args.remi_provider;
 
-    /* register a REMI provider */
-    {
-        int             flag;
-        remi_provider_t remi_provider;
-        /* check if a REMI provider exists with the same provider id */
-        remi_provider_registered(mid, provider_id, &flag, NULL, NULL,
-                                 &remi_provider);
-        if (flag) { /* REMI provider exists */
-            tmp_provider->remi_provider      = remi_provider;
-            tmp_provider->owns_remi_provider = 0;
-        } else { /* REMI provider does not exist */
-            // TODO actually use an ABT-IO instance
-            ret = remi_provider_register(mid, ABT_IO_INSTANCE_NULL, provider_id,
-                                         tmp_provider->handler_pool,
-                                         &(tmp_provider->remi_provider));
-            if (ret != REMI_SUCCESS) {
-                ret = BAKE_ERR_REMI;
-                goto error;
-            }
-            tmp_provider->owns_remi_provider = 1;
-        }
+    if (tmp_provider->remi_provider) {
         ret = remi_provider_register_migration_class(
             tmp_provider->remi_provider, "bake", NULL,
             bake_target_post_migration_callback, NULL, tmp_provider);
@@ -351,15 +325,6 @@ error:
         margo_deregister(mid, tmp_provider->rpc_migrate_region_id);
         margo_deregister(mid, tmp_provider->rpc_migrate_target_id);
     }
-
-#ifdef USE_REMI
-    if (tmp_provider && tmp_provider->remi_client) {
-        remi_client_finalize(tmp_provider->remi_client);
-        if (tmp_provider->owns_remi_provider) {
-            remi_provider_destroy(tmp_provider->remi_provider);
-        }
-    }
-#endif
 
     if (config) json_object_put(config);
 
@@ -945,6 +910,11 @@ static void bake_migrate_target_ult(hg_handle_t handle)
     lock = provider->lock;
     ABT_rwlock_wrlock(lock);
 
+    if (!provider->remi_client) {
+        out.ret = BAKE_ERR_OP_UNSUPPORTED;
+        goto finish;
+    }
+
     FIND_TARGET;
 
     /* lookup the address of the destination REMI provider */
@@ -1027,13 +997,6 @@ static void bake_server_finalize_cb(void* data)
     margo_deregister(mid, provider->rpc_remove_id);
     margo_deregister(mid, provider->rpc_migrate_region_id);
     margo_deregister(mid, provider->rpc_migrate_target_id);
-
-#ifdef USE_REMI
-    remi_client_finalize(provider->remi_client);
-    if (provider->owns_remi_provider) {
-        remi_provider_destroy(provider->remi_provider);
-    }
-#endif
 
     bake_provider_detach_all_targets(provider);
 

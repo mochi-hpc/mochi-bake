@@ -44,7 +44,6 @@ typedef struct bake_provider {
 #ifdef USE_REMI
     remi_client_t   remi_client;
     remi_provider_t remi_provider;
-    int             owns_remi_provider;
 #endif
 
     margo_bulk_poolset_t poolset; /* intermediate buffers, if used */
