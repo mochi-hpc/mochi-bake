@@ -7,6 +7,7 @@
 #ifndef __BAKE_SERVER_H
 #define __BAKE_SERVER_H
 
+#include <abt-io.h>
 #include <margo.h>
 #include <libpmemobj.h>
 #include <bake.h>
@@ -15,24 +16,28 @@
 extern "C" {
 #endif
 
-#define BAKE_ABT_POOL_DEFAULT    ABT_POOL_NULL
 #define BAKE_PROVIDER_ID_DEFAULT 0
 #define BAKE_PROVIDER_IGNORE     NULL
 
 typedef struct bake_provider* bake_provider_t;
 
 /**
- * Creates a BAKE pool to use for backend PMEM storage.
- *
- * NOTE: This function must be called on a pool before the pool
- * can be passed to 'bake_provider_register'.
- *
- * @param[in] pool_name path to PMEM backend file
- * @param[in] pool_size size of the created pool
- * @param[in] pool_mode mode of the created pool
- * @returns 0 on success, -1 otherwise
+ * The bake_provider_init_info structure can be passed in to the
+ * bake_provider_register() function to configure the provider. The struct
+ * can be memset to zero to use default values.
  */
-int bake_makepool(const char* pool_name, size_t pool_size, mode_t pool_mode);
+struct bake_provider_init_info {
+    const char* json_config; /* optional JSON-formatted string */
+    ABT_pool    rpc_pool;    /* optional pool on which to run RPC handlers */
+    abt_io_instance_id aid; /* optional abt-io instance, used by file backend */
+    void*              remi_provider; /* optional REMI provider */
+    void*              remi_client;   /* optional REMI client */
+};
+
+#define BAKE_PROVIDER_INIT_INFO_INITIALIZER                   \
+    {                                                         \
+        NULL, ABT_POOL_NULL, ABT_IO_INSTANCE_NULL, NULL, NULL \
+    }
 
 /**
  * Initializes a BAKE provider.
@@ -44,35 +49,49 @@ int bake_makepool(const char* pool_name, size_t pool_size, mode_t pool_mode);
  * @param[out] provider resulting provider
  * @returns 0 on success, -1 otherwise
  */
-int bake_provider_register(margo_instance_id mid,
-                           uint16_t          provider_id,
-                           ABT_pool          pool,
-                           bake_provider_t*  provider);
+int bake_provider_register(margo_instance_id                     mid,
+                           uint16_t                              provider_id,
+                           const struct bake_provider_init_info* args,
+                           bake_provider_t*                      provider);
 
 /**
- * @brief Deregisters and destroys the provider.
+ * @brief Deregisters the provider.
  *
- * @param provider Provider to deregister and destroy.
+ * @param provider Provider to deregister.
  *
  * @return 0 on success, -1 otherwise.
  */
-int bake_provider_destroy(bake_provider_t provider);
+int bake_provider_deregister(bake_provider_t provider);
 
 /**
- * Makes the provider start managing a target.
- * The target must have been previously created with bake_makepool,
- * and it should not be managed by another provider (whether in this
- * proccess or another).
+ * Makes the provider start managing a target.  The target must have already
+ * been created in the past.
  *
  * @param provider Bake provider
  * @param target_name path to pmem target
  * @param target_id resulting id identifying the target
  *
- * @return 0 on success, -1 on failure
+ * @return BAKE_SUCCESS or BAKE_ERR*
  */
-int bake_provider_add_storage_target(bake_provider_t   provider,
-                                     const char*       target_name,
-                                     bake_target_id_t* target_id);
+int bake_provider_attach_target(bake_provider_t   provider,
+                                const char*       target_name,
+                                bake_target_id_t* target_id);
+
+/**
+ * Create a new target that did not yet exist and begin managing it.
+ *
+ * @param provider Bake provider
+ * @param target_name path to pmem target
+ * @param[in] size size of the created target (may be ignored for target
+ * types that can be extended or use a fixed size physical device)
+ * @param target_id resulting id identifying the target
+ *
+ * @return BAKE_SUCCESS or BAKE_ERR*
+ */
+int bake_provider_create_target(bake_provider_t   provider,
+                                const char*       target_name,
+                                size_t            size,
+                                bake_target_id_t* target_id);
 
 /**
  * Makes the provider stop managing a target.
@@ -82,8 +101,8 @@ int bake_provider_add_storage_target(bake_provider_t   provider,
  *
  * @return 0 on success, -1 on failure
  */
-int bake_provider_remove_storage_target(bake_provider_t  provider,
-                                        bake_target_id_t target_id);
+int bake_provider_detach_target(bake_provider_t  provider,
+                                bake_target_id_t target_id);
 
 /**
  * Removes all the targets associated with a provider.
@@ -92,7 +111,7 @@ int bake_provider_remove_storage_target(bake_provider_t  provider,
  *
  * @return 0 on success, -1 on failure
  */
-int bake_provider_remove_all_storage_targets(bake_provider_t provider);
+int bake_provider_detach_all_targets(bake_provider_t provider);
 
 /**
  * Returns the number of targets that this provider manages.
@@ -102,13 +121,13 @@ int bake_provider_remove_all_storage_targets(bake_provider_t provider);
  *
  * @return 0 on success, -1 on failure
  */
-int bake_provider_count_storage_targets(bake_provider_t provider,
-                                        uint64_t*       num_targets);
+int bake_provider_count_targets(bake_provider_t provider,
+                                uint64_t*       num_targets);
 
 /**
  * List the target ids of the targets managed by this provider.
  * The targets array must be pre-allocated with at least enough
- * space to hold all the targets (use bake_provider_count_storage_targets
+ * space to hold all the targets (use bake_provider_count_targets
  * to know how many storage targets are managed).
  *
  * @param provider Bake provider
@@ -116,41 +135,29 @@ int bake_provider_count_storage_targets(bake_provider_t provider,
  *
  * @return 0 on success, -1 on failure
  */
-int bake_provider_list_storage_targets(bake_provider_t   provider,
-                                       bake_target_id_t* targets);
-
-/* TODO: the following configuration management functions would ideally be
- * split off into a dedicated component.  Treating this as a prototype for
- * now.
- */
+int bake_provider_list_targets(bake_provider_t   provider,
+                               bake_target_id_t* targets);
 
 /**
- * @brief Set configuration parameters as string key/value pairs
+ * Retrieves complete configuration of bake provider, encoded as json
  *
- * @param provider Bake provider
- * @param key Configuration key
- * @param value Configuratiion value
- *
- * @return 0 on success, -1 on failure
+ * @param [in] provider bake provider
+ * @returns null terminated string that must be free'd by caller
  */
-int bake_provider_set_conf(bake_provider_t provider,
-                           const char*     key,
-                           const char*     value);
+char* bake_provider_get_config(bake_provider_t provider);
 
 /**
- * @brief Set configuration parameters for a target.
+ * Creates a raw storage target, not connected to a provider.  This would
+ * mainly be used by external utilities, not a server daemon itself.
  *
- * @param provider Bake provider
- * @param tid Bake target id
- * @param key Configuration key
- * @param value Configuration value
+ * @param[in] path path to storage target (could be a file, directory, or
+ * device depending on the backend type)
+ * @param[in] size size of the created target (may be ignored for target
+ * types that can be extended or use a fixed size physical device)
  *
- * @return 0 on success, -1 on failure
+ * @returns 0 on success, -1 otherwise
  */
-int bake_target_set_conf(bake_provider_t  provider,
-                         bake_target_id_t tid,
-                         const char*      key,
-                         const char*      value);
+int bake_create_raw_target(const char* path, size_t size);
 
 #ifdef __cplusplus
 }

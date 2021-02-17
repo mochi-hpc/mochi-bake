@@ -25,13 +25,13 @@ static char* bake_err_str(int ret)
         return "An argument is invalid";
         break;
     case BAKE_ERR_MERCURY:
-        return "An error happend calling a Mercury function";
+        return "An error happened calling a Mercury function";
         break;
     case BAKE_ERR_ARGOBOTS:
         return "An error happened calling an Argobots function";
         break;
     case BAKE_ERR_PMEM:
-        return "An error happend calling a PMDK function";
+        return "An error happened calling a PMDK function";
         break;
     case BAKE_ERR_UNKNOWN_TARGET:
         return "Target refered to by id is not know to provider";
@@ -50,6 +50,15 @@ static char* bake_err_str(int ret)
         break;
     case BAKE_ERR_OP_UNSUPPORTED:
         return "Operation not supported";
+        break;
+    case BAKE_ERR_NOENT:
+        return "Entry does not exist";
+        break;
+    case BAKE_ERR_EXIST:
+        return "Entry already exists";
+        break;
+    case BAKE_ERR_NOMEM:
+        return "Out of memory";
         break;
     default:
         return "Unknown error";

@@ -32,7 +32,7 @@ typedef int (*bake_write_bulk_fn)(backend_context_t context,
                                   hg_addr_t         source,
                                   size_t            bulk_offset);
 
-typedef void (*free_fn)(void*);
+typedef void (*free_fn)(backend_context_t context, void*);
 
 typedef int (*bake_read_raw_fn)(backend_context_t context,
                                 bake_region_id_t  rid,
@@ -87,14 +87,12 @@ typedef int (*bake_migrate_region_fn)(backend_context_t context,
                                       bake_target_id_t  dest_target_id,
                                       bake_region_id_t* dest_rid);
 
+typedef int (*bake_create_raw_target_fn)(const char* path, size_t size);
+
 #ifdef USE_REMI
 typedef int (*bake_create_fileset_fn)(backend_context_t context,
                                       remi_fileset_t*   fileset);
 #endif
-
-typedef int (*bake_set_conf_fn)(backend_context_t context,
-                                const char*       key,
-                                const char*       value);
 
 typedef struct bake_backend {
     const char*                       name;
@@ -112,10 +110,10 @@ typedef struct bake_backend {
     bake_get_region_data_fn           _get_region_data;
     bake_remove_fn                    _remove;
     bake_migrate_region_fn            _migrate_region;
+    bake_create_raw_target_fn         _create_raw_target;
 #ifdef USE_REMI
     bake_create_fileset_fn _create_fileset;
 #endif
-    bake_set_conf_fn _set_conf;
 } bake_backend;
 
 typedef bake_backend* bake_backend_t;

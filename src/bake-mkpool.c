@@ -11,19 +11,20 @@
 #include <unistd.h>
 #include <string.h>
 #include <libpmemobj.h>
-#include <bake-server.h>
+
+#include "bake-server.h"
 
 struct options {
     char*  pmem_pool;
     size_t pool_size;
-    mode_t pool_mode;
 };
 
 void usage(int argc, char* argv[])
 {
-    fprintf(stderr, "Usage: bake-mkpool [OPTIONS] <pmem_pool>\n");
+    fprintf(stderr, "Usage: bake-mkpool [OPTIONS] <path>\n");
     fprintf(stderr,
-            "       pmem_pool is the path to the pmemobj pool to create\n");
+            "       path may be a file, directory, or device depending on the "
+            "backend.\n");
     fprintf(stderr,
             "           (prepend pmem: or file: to specify backend format)\n");
     fprintf(stderr,
@@ -31,8 +32,8 @@ void usage(int argc, char* argv[])
             "specified size (K, M, G, etc. suffixes allowed)\n");
     fprintf(stderr, "Example: ./bake-mkpool -s 16M /dev/shm/foo.dat\n");
     fprintf(stderr,
-            "Note: if -s is not specified, then target file must already exist "
-            "with desired size.\n");
+            "-s may be omitted if backend supports extending space, or if pool "
+            "is being created on existing fixed-size device.\n");
     return;
 }
 
@@ -68,7 +69,6 @@ void parse_args(int argc, char* argv[], struct options* opts)
 
     /* set default options */
     memset(opts, 0, sizeof(*opts));
-    opts->pool_mode = 0664;
 
     /* get options */
     while ((opt = getopt(argc, argv, "s:")) != -1) {
@@ -96,41 +96,14 @@ void parse_args(int argc, char* argv[], struct options* opts)
     return;
 }
 
-/* TODO: this is temporary until we have a more complete solution for admin
- * functions.
- */
-extern int
-bake_file_makepool(const char* file_name, size_t file_size, mode_t file_mode);
-
 int main(int argc, char* argv[])
 {
     struct options opts;
     int            ret;
-    char*          backend_type = NULL;
 
     parse_args(argc, argv, &opts);
 
-    /* figure out the backend by searching until the ":" in the file name */
-    char* tmp = strchr(opts.pmem_pool, ':');
-    if (tmp != NULL) {
-        backend_type = strdup(opts.pmem_pool);
-        backend_type[(unsigned long)(tmp - opts.pmem_pool)] = '\0';
-        opts.pmem_pool                                      = tmp + 1;
-    } else {
-        backend_type = strdup("pmem");
-    }
+    ret = bake_create_raw_target(opts.pmem_pool, opts.pool_size);
 
-    if (strcmp(backend_type, "pmem") == 0) {
-        ret = bake_makepool(opts.pmem_pool, opts.pool_size, opts.pool_mode);
-    } else if (strcmp(backend_type, "file") == 0) {
-        ret = bake_file_makepool(opts.pmem_pool, opts.pool_size,
-                                 opts.pool_mode);
-    } else {
-        fprintf(stderr, "ERROR: unknown backend type \"%s\"\n", backend_type);
-        free(backend_type);
-        return BAKE_ERR_BACKEND_TYPE;
-    }
-
-    free(backend_type);
     return (ret);
 }

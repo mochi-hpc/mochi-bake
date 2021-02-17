@@ -1,6 +1,6 @@
 /*
  * (C) 2019 The University of Chicago
- * 
+ *
  * See COPYRIGHT in top-level directory.
  */
 #ifndef __BAKE_SERVER_HPP
@@ -12,7 +12,7 @@
 #include <bake-server.h>
 
 #define _CHECK_RET(__ret) \
-        if(__ret != BAKE_SUCCESS) throw exception(__ret)
+    if (__ret != BAKE_SUCCESS) throw exception(__ret)
 
 namespace bake {
 
@@ -23,11 +23,9 @@ namespace bake {
  * @param pool_size Pool size.
  * @param pool_mode Mode.
  */
-inline void makepool(
-        const std::string& pool_name,
-        size_t pool_size,
-        mode_t pool_mode) {
-    int ret = bake_makepool(pool_name.c_str(), pool_size, pool_mode);
+inline void create_raw_target(const std::string& path, size_t size)
+{
+    int ret = bake_create_raw_target(path.c_str(), size);
     _CHECK_RET(ret);
 }
 
@@ -36,39 +34,68 @@ inline void makepool(
  */
 class provider {
 
-    margo_instance_id m_mid = MARGO_INSTANCE_NULL;
-    bake_provider_t m_provider = NULL;
+    margo_instance_id m_mid      = MARGO_INSTANCE_NULL;
+    bake_provider_t   m_provider = NULL;
 
-    provider(
-            margo_instance_id mid,
-            uint16_t provider_id = 0,
-            ABT_pool pool = ABT_POOL_NULL)
-    : m_mid(mid) {
-        int ret = bake_provider_register(mid, provider_id, pool, &m_provider);
+    provider(margo_instance_id              mid,
+             uint16_t                       provider_id,
+             const bake_provider_init_info* args)
+        : m_mid(mid)
+    {
+        int ret = bake_provider_register(mid, provider_id, args, &m_provider);
         _CHECK_RET(ret);
-
     }
 
-    static void finalize_callback(void* args) {
+    static void finalize_callback(void* args)
+    {
         auto* p = static_cast<provider*>(args);
         delete p;
     }
 
-    public:
-
+  public:
     /**
      * @brief Factory method to create an instance of provider.
      *
      * @param mid Margo instance id.
      * @param provider_id Provider id.
      * @param pool Argobots pool.
+     * @param config JSON config.
+     * @param abtid ABT-IO instance.
+     * @param remi REMI provider.
      *
      * @return Pointer to newly created provider.
      */
-    static provider* create(margo_instance_id mid,
-                            uint16_t provider_id = 0,
-                            ABT_pool pool = BAKE_ABT_POOL_DEFAULT) {
-        auto p = new provider(mid, provider_id, pool);
+    static provider* create(margo_instance_id  mid,
+                            uint16_t           provider_id = 0,
+                            ABT_pool           pool        = ABT_POOL_NULL,
+                            const std::string& config      = "",
+                            abt_io_instance_id abtio = ABT_IO_INSTANCE_NULL,
+                            void*              remi_provider = NULL,
+                            void*              remi_client   = NULL)
+    {
+        bake_provider_init_info args = BAKE_PROVIDER_INIT_INFO_INITIALIZER;
+        args.json_config             = config.c_str();
+        args.rpc_pool                = pool;
+        args.aid                     = abtio;
+        args.remi_provider           = remi_provider;
+        args.remi_client             = remi_client;
+        return create(mid, provider_id, &args);
+    }
+
+    /**
+     * @brief Factory method to create an instance of provider.
+     *
+     * @param mid Margo instance id.
+     * @param provider_id Provider id.
+     * @param args bake_provider_init_info structure.
+     *
+     * @return Pointer to newly created provider.
+     */
+    static provider* create(margo_instance_id              mid,
+                            uint16_t                       provider_id,
+                            const bake_provider_init_info* args = nullptr)
+    {
+        auto p = new provider(mid, provider_id, args);
         margo_provider_push_finalize_callback(mid, p, &finalize_callback, p);
         return p;
     }
@@ -96,9 +123,10 @@ class provider {
     /**
      * @brief Destructor.
      */
-    ~provider() {
+    ~provider()
+    {
         margo_provider_pop_finalize_callback(m_mid, this);
-        bake_provider_destroy(m_provider);
+        bake_provider_deregister(m_provider);
     }
 
     /**
@@ -109,12 +137,28 @@ class provider {
      *
      * @return a target object.
      */
-    target add_storage_target(const std::string& target_name) {
+    target attach_target(const std::string& target_name)
+    {
         target t;
-        int ret = bake_provider_add_storage_target(
-                m_provider,
-                target_name.c_str(),
-                &(t.m_tid));
+        int ret = bake_provider_attach_target(m_provider, target_name.c_str(),
+                                              &(t.m_tid));
+        _CHECK_RET(ret);
+        return t;
+    }
+
+    /**
+     * @brief Create a storage target and attach it to the provider.
+     *
+     * @param target_name Path to the target.
+     * @param size Target size.
+     *
+     * @return a target object.
+     */
+    target create_target(const std::string& target_name, size_t size)
+    {
+        target t;
+        int ret = bake_provider_create_target(m_provider, target_name.c_str(),
+                                              size, &(t.m_tid));
         _CHECK_RET(ret);
         return t;
     }
@@ -126,16 +170,18 @@ class provider {
      *
      * @param t target to remove.
      */
-    void remove_storage_target(const target& t) {
-        int ret = bake_provider_remove_storage_target(m_provider, t.m_tid);
+    void detach_target(const target& t)
+    {
+        int ret = bake_provider_detach_target(m_provider, t.m_tid);
         _CHECK_RET(ret);
     }
 
     /**
      * @brief Removes all the storage targets managed by the provider.
      */
-    void remove_all_storage_targets() {
-        int ret = bake_provider_remove_all_storage_targets(m_provider);
+    void detach_all_targets()
+    {
+        int ret = bake_provider_detach_all_targets(m_provider);
         _CHECK_RET(ret);
     }
 
@@ -144,9 +190,10 @@ class provider {
      *
      * @return number of storage targets.
      */
-    uint64_t count_storage_targets() const {
+    uint64_t count_targets() const
+    {
         uint64_t count;
-        int ret = bake_provider_count_storage_targets(m_provider, &count);
+        int      ret = bake_provider_count_targets(m_provider, &count);
         _CHECK_RET(ret);
         return count;
     }
@@ -156,25 +203,28 @@ class provider {
      *
      * @return Vector of targets.
      */
-    std::vector<target> list_storage_targets() const {
-        uint64_t count = count_storage_targets();
-        std::vector<target> result(count);
+    std::vector<target> list_targets() const
+    {
+        uint64_t                      count = count_targets();
+        std::vector<target>           result(count);
         std::vector<bake_target_id_t> tgts(count);
-        int ret = bake_provider_list_storage_targets(m_provider, tgts.data());
+        int ret = bake_provider_list_targets(m_provider, tgts.data());
         _CHECK_RET(ret);
-        for(unsigned i=0; i < count; i++) {
-            result[i].m_tid = tgts[i];
-        }
+        for (unsigned i = 0; i < count; i++) { result[i].m_tid = tgts[i]; }
         return result;
     }
 
-    void set_config(const std::string& key, const std::string& value) {
-        int ret = bake_provider_set_conf(m_provider, key.c_str(), value.c_str());
-        _CHECK_RET(ret);
+    std::string get_config() const
+    {
+        char* cfg = bake_provider_get_config(m_provider);
+        if (!cfg) return std::string();
+        auto str_cfg = std::string(cfg);
+        free(cfg);
+        return str_cfg;
     }
 };
 
-}
+} // namespace bake
 
 #undef _CHECK_RET
 

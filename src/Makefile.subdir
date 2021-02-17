@@ -28,6 +28,11 @@ bin_PROGRAMS += \
  src/bake-copy-to \
  src/bake-copy-from
 
+if ENABLE_BEDROCK
+src_libbake_bedrock_la_SOURCES += src/bake-bedrock-module.c
+src_libbake_bedrock_la_LIBADD = src/libbake-server.la src/libbake-client.la
+endif
+
 if BUILD_BENCHMARK
 src_bake_benchmark_SOURCES = src/bake-benchmark.cc
 src_bake_benchmark_LDADD = src/libbake-server.la src/libbake-client.la
