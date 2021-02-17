@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <margo.h>
 #include <margo-bulk-pool.h>
+#include <json-c/json.h>
 #ifdef USE_REMI
     #include <remi/remi-client.h>
     #include <remi/remi-server.h>
@@ -21,6 +22,7 @@
 #include "bake-rpc.h"
 #include "bake-timing.h"
 #include "bake-provider.h"
+#include "bake-macros.h"
 
 extern bake_backend g_bake_pmem_backend;
 extern bake_backend g_bake_file_backend;
@@ -42,13 +44,15 @@ DECLARE_MARGO_RPC_HANDLER(bake_remove_ult)
 DECLARE_MARGO_RPC_HANDLER(bake_migrate_region_ult)
 DECLARE_MARGO_RPC_HANDLER(bake_migrate_target_ult)
 
-/* TODO: support different parameters per provider instance */
-struct bake_provider_conf g_default_bake_provider_conf
-    = {.pipeline_enable            = 0,
-       .pipeline_npools            = 4,
-       .pipeline_nbuffers_per_pool = 32,
-       .pipeline_first_buffer_size = 65536,
-       .pipeline_multiplier        = 4};
+/**
+ * Validates the format of the configuration and fills default values
+ * if they are not provided
+ */
+static int validate_and_complete_config(struct json_object* _config,
+                                        ABT_pool            _progress_pool);
+static int configure_targets(bake_provider_t     provider,
+                             struct json_object* _config);
+static int setup_poolset(bake_provider_t provider);
 
 static bake_target_t* find_target_entry(bake_provider_t  provider,
                                         bake_target_id_t target_id)
@@ -66,13 +70,17 @@ static int bake_target_post_migration_callback(remi_fileset_t fileset,
                                                void*          provider);
 #endif
 
-int bake_provider_register(margo_instance_id mid,
-                           uint16_t          provider_id,
-                           ABT_pool          abt_pool,
-                           bake_provider_t*  provider)
+int bake_provider_register(margo_instance_id                     mid,
+                           uint16_t                              provider_id,
+                           const struct bake_provider_init_info* uargs,
+                           bake_provider_t*                      provider)
 {
-    bake_provider* tmp_provider;
-    int            ret;
+    struct bake_provider_init_info args         = *uargs;
+    bake_provider*                 tmp_provider = NULL;
+    int                            ret;
+    struct json_object*            config                   = NULL;
+    int                            configuring_targets_flag = 0;
+
     /* check if a provider with the same provider id already exists */
     {
         hg_id_t   id;
@@ -80,70 +88,113 @@ int bake_provider_register(margo_instance_id mid,
         margo_provider_registered_name(mid, "bake_probe_rpc", provider_id, &id,
                                        &flag);
         if (flag == HG_TRUE) {
-            fprintf(stderr,
-                    "bake_provider_register(): a BAKE provider with the same "
-                    "id (%d) already exists\n",
-                    provider_id);
-            return BAKE_ERR_MERCURY;
+            BAKE_ERROR(
+                mid,
+                "bake_provider_register(): a bake provider with the same "
+                "id (%d) already exists",
+                provider_id);
+            ret = BAKE_ERR_MERCURY;
+            goto error;
         }
+    }
+
+    if (args.json_config) {
+        /* read JSON config from provided string argument */
+        struct json_tokener*    tokener = json_tokener_new();
+        enum json_tokener_error jerr;
+
+        config = json_tokener_parse_ex(tokener, args.json_config,
+                                       strlen(args.json_config));
+        if (!config) {
+            jerr = json_tokener_get_error(tokener);
+            BAKE_ERROR(mid, "JSON parse error: %s",
+                       json_tokener_error_desc(jerr));
+            json_tokener_free(tokener);
+            ret = BAKE_ERR_INVALID_ARG;
+            goto error;
+        }
+        json_tokener_free(tokener);
+    } else {
+        /* create default JSON config */
+        config = json_object_new_object();
+    }
+
+    /* validate and complete configuration */
+    ret = validate_and_complete_config(config, args.rpc_pool);
+    if (ret != 0) {
+        BAKE_ERROR(mid, "could not validate and complete configuration");
+        ret = BAKE_ERR_INVALID_ARG;
+        goto error;
     }
 
     /* allocate the resulting structure */
     tmp_provider = calloc(1, sizeof(*tmp_provider));
-    if (!tmp_provider) return BAKE_ERR_ALLOCATION;
+    if (!tmp_provider) {
+        ret = BAKE_ERR_NOMEM;
+        goto error;
+    }
+
+    tmp_provider->json_cfg = config;
+    tmp_provider->aid      = args.aid;
 
     tmp_provider->mid = mid;
-    if (abt_pool != ABT_POOL_NULL)
-        tmp_provider->handler_pool = abt_pool;
+    if (args.rpc_pool != NULL)
+        tmp_provider->handler_pool = args.rpc_pool;
     else {
         margo_get_handler_pool(mid, &(tmp_provider->handler_pool));
     }
 
-    tmp_provider->config = g_default_bake_provider_conf;
+    /* create buffer poolset if needed for config */
+    ret = setup_poolset(tmp_provider);
+    if (ret != 0) {
+        BAKE_ERROR(mid, "could not create poolset for pipelining");
+        goto error;
+    }
 
     /* Create rwlock */
     ret = ABT_rwlock_create(&(tmp_provider->lock));
     if (ret != ABT_SUCCESS) {
-        free(tmp_provider);
-        return BAKE_ERR_ARGOBOTS;
+        ret = BAKE_ERR_ARGOBOTS;
+        goto error;
     }
 
     /* register RPCs */
     hg_id_t rpc_id;
     rpc_id = MARGO_REGISTER_PROVIDER(mid, "bake_create_rpc", bake_create_in_t,
                                      bake_create_out_t, bake_create_ult,
-                                     provider_id, abt_pool);
+                                     provider_id, tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_create_id = rpc_id;
 
     rpc_id = MARGO_REGISTER_PROVIDER(mid, "bake_write_rpc", bake_write_in_t,
                                      bake_write_out_t, bake_write_ult,
-                                     provider_id, abt_pool);
+                                     provider_id, tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_write_id = rpc_id;
 
     rpc_id = MARGO_REGISTER_PROVIDER(
         mid, "bake_eager_write_rpc", bake_eager_write_in_t,
-        bake_eager_write_out_t, bake_eager_write_ult, provider_id, abt_pool);
+        bake_eager_write_out_t, bake_eager_write_ult, provider_id,
+        tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_eager_write_id = rpc_id;
 
     rpc_id = MARGO_REGISTER_PROVIDER(
         mid, "bake_eager_read_rpc", bake_eager_read_in_t, bake_eager_read_out_t,
-        bake_eager_read_ult, provider_id, abt_pool);
+        bake_eager_read_ult, provider_id, tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_eager_read_id = rpc_id;
 
     rpc_id = MARGO_REGISTER_PROVIDER(mid, "bake_persist_rpc", bake_persist_in_t,
                                      bake_persist_out_t, bake_persist_ult,
-                                     provider_id, abt_pool);
+                                     provider_id, tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_persist_id = rpc_id;
 
     rpc_id = MARGO_REGISTER_PROVIDER(
         mid, "bake_create_write_persist_rpc", bake_create_write_persist_in_t,
         bake_create_write_persist_out_t, bake_create_write_persist_ult,
-        provider_id, abt_pool);
+        provider_id, tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_create_write_persist_id = rpc_id;
 
@@ -151,56 +202,57 @@ int bake_provider_register(margo_instance_id mid,
                                      bake_eager_create_write_persist_in_t,
                                      bake_eager_create_write_persist_out_t,
                                      bake_eager_create_write_persist_ult,
-                                     provider_id, abt_pool);
+                                     provider_id, tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_eager_create_write_persist_id = rpc_id;
 
-    rpc_id = MARGO_REGISTER_PROVIDER(mid, "bake_get_size_rpc",
-                                     bake_get_size_in_t, bake_get_size_out_t,
-                                     bake_get_size_ult, provider_id, abt_pool);
+    rpc_id = MARGO_REGISTER_PROVIDER(
+        mid, "bake_get_size_rpc", bake_get_size_in_t, bake_get_size_out_t,
+        bake_get_size_ult, provider_id, tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_get_size_id = rpc_id;
 
-    rpc_id = MARGO_REGISTER_PROVIDER(mid, "bake_get_data_rpc",
-                                     bake_get_data_in_t, bake_get_data_out_t,
-                                     bake_get_data_ult, provider_id, abt_pool);
+    rpc_id = MARGO_REGISTER_PROVIDER(
+        mid, "bake_get_data_rpc", bake_get_data_in_t, bake_get_data_out_t,
+        bake_get_data_ult, provider_id, tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_get_data_id = rpc_id;
 
     rpc_id = MARGO_REGISTER_PROVIDER(mid, "bake_read_rpc", bake_read_in_t,
                                      bake_read_out_t, bake_read_ult,
-                                     provider_id, abt_pool);
+                                     provider_id, tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_read_id = rpc_id;
 
     rpc_id = MARGO_REGISTER_PROVIDER(mid, "bake_probe_rpc", bake_probe_in_t,
                                      bake_probe_out_t, bake_probe_ult,
-                                     provider_id, abt_pool);
+                                     provider_id, tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_probe_id = rpc_id;
 
     rpc_id = MARGO_REGISTER_PROVIDER(mid, "bake_noop_rpc", void, void,
-                                     bake_noop_ult, provider_id, abt_pool);
+                                     bake_noop_ult, provider_id,
+                                     tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_noop_id = rpc_id;
 
     rpc_id = MARGO_REGISTER_PROVIDER(mid, "bake_remove_rpc", bake_remove_in_t,
                                      bake_remove_out_t, bake_remove_ult,
-                                     provider_id, abt_pool);
+                                     provider_id, tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_remove_id = rpc_id;
 
     rpc_id = MARGO_REGISTER_PROVIDER(
         mid, "bake_migrate_region_rpc", bake_migrate_region_in_t,
         bake_migrate_region_out_t, bake_migrate_region_ult, provider_id,
-        abt_pool);
+        tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_migrate_region_id = rpc_id;
 
     rpc_id = MARGO_REGISTER_PROVIDER(
         mid, "bake_migrate_target_rpc", bake_migrate_target_in_t,
         bake_migrate_target_out_t, bake_migrate_target_ult, provider_id,
-        abt_pool);
+        tmp_provider->handler_pool);
     margo_register_data(mid, rpc_id, (void*)tmp_provider, NULL);
     tmp_provider->rpc_migrate_target_id = rpc_id;
 
@@ -217,45 +269,29 @@ int bake_provider_register(margo_instance_id mid,
     }
 
 #ifdef USE_REMI
-    /* register a REMI client */
-    // TODO actually use an ABT-IO instance
-    ret = remi_client_init(mid, ABT_IO_INSTANCE_NULL,
-                           &(tmp_provider->remi_client));
-    if (ret != REMI_SUCCESS) {
-        // XXX unregister RPCs, cleanup tmp_provider before returning
-        return BAKE_ERR_REMI;
-    }
+    tmp_provider->remi_client   = (remi_client_t)args.remi_client;
+    tmp_provider->remi_provider = (remi_provider_t)args.remi_provider;
 
-    /* register a REMI provider */
-    {
-        int             flag;
-        remi_provider_t remi_provider;
-        /* check if a REMI provider exists with the same provider id */
-        remi_provider_registered(mid, provider_id, &flag, NULL, NULL,
-                                 &remi_provider);
-        if (flag) { /* REMI provider exists */
-            tmp_provider->remi_provider      = remi_provider;
-            tmp_provider->owns_remi_provider = 0;
-        } else { /* REMI provider does not exist */
-            // TODO actually use an ABT-IO instance
-            ret = remi_provider_register(mid, ABT_IO_INSTANCE_NULL, provider_id,
-                                         abt_pool,
-                                         &(tmp_provider->remi_provider));
-            if (ret != REMI_SUCCESS) {
-                // XXX unregister RPCs, cleanup tmp_provider before returning
-                return BAKE_ERR_REMI;
-            }
-            tmp_provider->owns_remi_provider = 1;
-        }
+    if (tmp_provider->remi_provider) {
         ret = remi_provider_register_migration_class(
             tmp_provider->remi_provider, "bake", NULL,
             bake_target_post_migration_callback, NULL, tmp_provider);
         if (ret != REMI_SUCCESS) {
-            // XXX unregister RPCs, cleanup tmp_provider before returning
-            return BAKE_ERR_REMI;
+            ret = BAKE_ERR_REMI;
+            goto error;
         }
     }
 #endif
+
+    /* Did the config include targets that we need to attach or create? */
+    configuring_targets_flag = 1;
+    ret                      = configure_targets(tmp_provider, config);
+    if (ret < 0) {
+        ret = BAKE_ERR_INVALID_ARG;
+        goto error;
+    }
+
+    tmp_provider->json_cfg = config;
 
     /* install the bake server finalize callback */
     margo_provider_push_finalize_callback(
@@ -264,18 +300,71 @@ int bake_provider_register(margo_instance_id mid,
     if (provider != BAKE_PROVIDER_IGNORE) *provider = tmp_provider;
 
     return BAKE_SUCCESS;
+
+error:
+
+    if (configuring_targets_flag) {
+        /* we might have auto attached targets that need to be detached now */
+        bake_provider_detach_all_targets(tmp_provider);
+    }
+
+    if (tmp_provider && tmp_provider->rpc_create_id) {
+        margo_deregister(mid, tmp_provider->rpc_create_id);
+        margo_deregister(mid, tmp_provider->rpc_write_id);
+        margo_deregister(mid, tmp_provider->rpc_eager_write_id);
+        margo_deregister(mid, tmp_provider->rpc_persist_id);
+        margo_deregister(mid, tmp_provider->rpc_create_write_persist_id);
+        margo_deregister(mid, tmp_provider->rpc_eager_create_write_persist_id);
+        margo_deregister(mid, tmp_provider->rpc_get_size_id);
+        margo_deregister(mid, tmp_provider->rpc_get_data_id);
+        margo_deregister(mid, tmp_provider->rpc_read_id);
+        margo_deregister(mid, tmp_provider->rpc_eager_read_id);
+        margo_deregister(mid, tmp_provider->rpc_probe_id);
+        margo_deregister(mid, tmp_provider->rpc_noop_id);
+        margo_deregister(mid, tmp_provider->rpc_remove_id);
+        margo_deregister(mid, tmp_provider->rpc_migrate_region_id);
+        margo_deregister(mid, tmp_provider->rpc_migrate_target_id);
+    }
+
+    if (config) json_object_put(config);
+
+    if (tmp_provider) {
+        if (tmp_provider->poolset)
+            margo_bulk_poolset_destroy(tmp_provider->poolset);
+        if (tmp_provider->lock) ABT_rwlock_free(&(tmp_provider->lock));
+        free(tmp_provider);
+    }
+
+    return (ret);
 }
 
-int bake_provider_destroy(bake_provider_t provider)
+int bake_provider_deregister(bake_provider_t provider)
 {
     margo_provider_pop_finalize_callback(provider->mid, provider);
     bake_server_finalize_cb(provider);
     return BAKE_SUCCESS;
 }
 
-int bake_provider_add_storage_target(bake_provider_t   provider,
-                                     const char*       target_name,
-                                     bake_target_id_t* target_id)
+int bake_provider_create_target(bake_provider_t   provider,
+                                const char*       target_name,
+                                size_t            size,
+                                bake_target_id_t* target_id)
+{
+    int ret;
+
+    /* create the actual target */
+    ret = bake_create_raw_target(target_name, size);
+    if (ret < 0) return (ret);
+
+    /* begin managing it */
+    ret = bake_provider_attach_target(provider, target_name, target_id);
+
+    return (ret);
+}
+
+int bake_provider_attach_target(bake_provider_t   provider,
+                                const char*       target_name,
+                                bake_target_id_t* target_id)
 {
     int               ret = BAKE_SUCCESS;
     bake_target_id_t  tid;
@@ -299,7 +388,7 @@ int bake_provider_add_storage_target(bake_provider_t   provider,
     } else if (strcmp(backend_type, "file") == 0) {
         new_entry->backend = &g_bake_file_backend;
     } else {
-        fprintf(stderr, "ERROR: unknown backend type \"%s\"\n", backend_type);
+        BAKE_ERROR(provider->mid, "unknown backend type \"%s\"", backend_type);
         free(backend_type);
         return BAKE_ERR_BACKEND_TYPE;
     }
@@ -323,8 +412,8 @@ int bake_provider_add_storage_target(bake_provider_t   provider,
     HASH_FIND(hh, provider->targets, &tid, sizeof(bake_target_id_t),
               check_entry);
     if (check_entry != new_entry) {
-        fprintf(stderr,
-                "Error: BAKE could not insert new pmem pool into the hash\n");
+        BAKE_ERROR(provider->mid,
+                   "could not insert new pmem pool into the hash");
         new_entry->backend->_finalize(ctx);
         free(new_entry);
         ret = BAKE_ERR_ALLOCATION;
@@ -339,8 +428,8 @@ int bake_provider_add_storage_target(bake_provider_t   provider,
     return ret;
 }
 
-int bake_provider_remove_storage_target(bake_provider_t  provider,
-                                        bake_target_id_t target_id)
+int bake_provider_detach_target(bake_provider_t  provider,
+                                bake_target_id_t target_id)
 {
     int ret;
     ABT_rwlock_wrlock(provider->lock);
@@ -359,7 +448,7 @@ int bake_provider_remove_storage_target(bake_provider_t  provider,
     return ret;
 }
 
-int bake_provider_remove_all_storage_targets(bake_provider_t provider)
+int bake_provider_detach_all_targets(bake_provider_t provider)
 {
     ABT_rwlock_wrlock(provider->lock);
     bake_target_t *p, *tmp;
@@ -370,13 +459,11 @@ int bake_provider_remove_all_storage_targets(bake_provider_t provider)
         free(p);
     }
     provider->num_targets = 0;
-    margo_bulk_poolset_destroy(provider->poolset);
     ABT_rwlock_unlock(provider->lock);
     return BAKE_SUCCESS;
 }
 
-int bake_provider_count_storage_targets(bake_provider_t provider,
-                                        uint64_t*       num_targets)
+int bake_provider_count_targets(bake_provider_t provider, uint64_t* num_targets)
 {
     ABT_rwlock_rdlock(provider->lock);
     *num_targets = provider->num_targets;
@@ -384,8 +471,8 @@ int bake_provider_count_storage_targets(bake_provider_t provider,
     return BAKE_SUCCESS;
 }
 
-int bake_provider_list_storage_targets(bake_provider_t   provider,
-                                       bake_target_id_t* targets)
+int bake_provider_list_targets(bake_provider_t   provider,
+                               bake_target_id_t* targets)
 {
     ABT_rwlock_rdlock(provider->lock);
     bake_target_t *p, *tmp;
@@ -731,7 +818,7 @@ static void bake_eager_read_ult(hg_handle_t handle)
 finish:
     UNLOCK_PROVIDER;
     RESPOND_AND_CLEANUP;
-    if (free_data) free_data(out.buffer);
+    if (free_data) free_data(target->context, out.buffer);
 }
 DEFINE_MARGO_RPC_HANDLER(bake_eager_read_ult)
 
@@ -754,9 +841,9 @@ static void bake_probe_ult(hg_handle_t handle)
     }
 
     uint64_t targets_count;
-    bake_provider_count_storage_targets(provider, &targets_count);
+    bake_provider_count_targets(provider, &targets_count);
     bake_target_id_t targets[targets_count];
-    bake_provider_list_storage_targets(provider, targets);
+    bake_provider_list_targets(provider, targets);
 
     out.ret         = BAKE_SUCCESS;
     out.targets     = targets;
@@ -823,6 +910,11 @@ static void bake_migrate_target_ult(hg_handle_t handle)
     lock = provider->lock;
     ABT_rwlock_wrlock(lock);
 
+    if (!provider->remi_client) {
+        out.ret = BAKE_ERR_OP_UNSUPPORTED;
+        goto finish;
+    }
+
     FIND_TARGET;
 
     /* lookup the address of the destination REMI provider */
@@ -862,9 +954,7 @@ static void bake_migrate_target_ult(hg_handle_t handle)
 
     UNLOCK_PROVIDER;
     /* remove the target from the list of managed targets */
-    if (in.remove_src) {
-        bake_provider_remove_storage_target(provider, in.bti);
-    }
+    if (in.remove_src) { bake_provider_detach_target(provider, in.bti); }
     LOCK_PROVIDER;
 
     out.ret = BAKE_SUCCESS;
@@ -908,14 +998,9 @@ static void bake_server_finalize_cb(void* data)
     margo_deregister(mid, provider->rpc_migrate_region_id);
     margo_deregister(mid, provider->rpc_migrate_target_id);
 
-#ifdef USE_REMI
-    remi_client_finalize(provider->remi_client);
-    if (provider->owns_remi_provider) {
-        remi_provider_destroy(provider->remi_provider);
-    }
-#endif
+    bake_provider_detach_all_targets(provider);
 
-    bake_provider_remove_all_storage_targets(provider);
+    json_object_put(provider->json_cfg);
 
     ABT_rwlock_free(&(provider->lock));
 
@@ -942,7 +1027,7 @@ static void migration_fileset_cb(const char* filename, void* arg)
     strcat(fullname, mig_args->root);
     strcat(fullname, filename);
     bake_target_id_t tid;
-    bake_provider_add_storage_target(mig_args->provider, fullname, &tid);
+    bake_provider_attach_target(mig_args->provider, fullname, &tid);
 }
 
 static void migration_metadata_cb(const char* key, const char* val, void* arg)
@@ -967,45 +1052,204 @@ static int bake_target_post_migration_callback(remi_fileset_t fileset,
 
 #endif
 
-static int set_conf_cb_pipeline_enabled(bake_provider_t provider,
-                                        const char*     value)
+static int setup_poolset(bake_provider_t provider)
 {
-    int         ret;
     hg_return_t hret;
 
-    ret = sscanf(value, "%u", &provider->config.pipeline_enable);
-    if (ret != 1) return BAKE_ERR_INVALID_ARG;
+    /* NOTE: this is called after validate, so we don't need extensive error
+     * checking on the json here
+     */
 
-    if (provider->config.pipeline_enable) {
-        hret = margo_bulk_poolset_create(
-            provider->mid, provider->config.pipeline_npools,
-            provider->config.pipeline_nbuffers_per_pool,
-            provider->config.pipeline_first_buffer_size,
-            provider->config.pipeline_multiplier, HG_BULK_READWRITE,
-            &(provider->poolset));
-        if (hret != 0) return BAKE_ERR_MERCURY;
+    /* nothing to do if pipelining is disabled */
+    if (!json_object_get_boolean(
+            json_object_object_get(provider->json_cfg, "pipeline_enable"))) {
+        return (0);
     }
+
+    hret = margo_bulk_poolset_create(
+        provider->mid,
+        json_object_get_int(
+            json_object_object_get(provider->json_cfg, "pipeline_npools")),
+        json_object_get_int(json_object_object_get(
+            provider->json_cfg, "pipeline_nbuffers_per_pool")),
+        json_object_get_int(json_object_object_get(
+            provider->json_cfg, "pipeline_first_buffer_size")),
+        json_object_get_int(
+            json_object_object_get(provider->json_cfg, "pipeline_multiplier")),
+        HG_BULK_READWRITE, &(provider->poolset));
+    if (hret != 0) return BAKE_ERR_MERCURY;
+
     return BAKE_SUCCESS;
 }
 
-int bake_provider_set_conf(bake_provider_t provider,
-                           const char*     key,
-                           const char*     value)
+/* attach each target listed in the backend json block.  This fn assumes
+ * that backend has an array of strings called "targets"
+ */
+static int attach_targets(bake_provider_t     provider,
+                          const char*         prefix,
+                          struct json_object* backend)
 {
-    /* TODO: make this more generic, manually issuing callbacks for
-     * particular keys right now.
-     */
-    if (strcmp(key, "pipeline_enabled") == 0)
-        return set_conf_cb_pipeline_enabled(provider, value);
-    else
-        return BAKE_ERR_INVALID_ARG;
+    bake_target_id_t    tid;
+    int                 ret;
+    int                 i;
+    char**              target_names       = NULL;
+    int                 target_names_count = 0;
+    struct json_object* targets;
+    struct json_object* val;
+    struct json_object* _target;
+    size_t              default_initial_target_size = 0;
+
+    if (CONFIG_HAS(backend, "default_initial_target_size", val)) {
+        default_initial_target_size = json_object_get_int(val);
+        BAKE_DEBUG(provider->mid, "default_initial_target_size: %lu",
+                   default_initial_target_size);
+    }
+
+    if (CONFIG_HAS(backend, "targets", targets)) {
+        target_names_count = json_object_array_length(targets);
+        target_names       = calloc(target_names_count, sizeof(*target_names));
+        if (!target_names) {
+            ret = BAKE_ERR_NOMEM;
+            goto error;
+        }
+
+        for (i = 0; i < target_names_count; i++) {
+            target_names[i] = malloc(256 * sizeof(char));
+            if (!target_names[i]) {
+                ret = BAKE_ERR_NOMEM;
+                goto error;
+            }
+        }
+
+        json_array_foreach(targets, i, _target)
+        {
+            snprintf(target_names[i], 256, "%s:%s", prefix,
+                     json_object_get_string(_target));
+        }
+        /* Delete array from parent json.  The array will be
+         * re-constructed as targets are attached.
+         */
+        json_object_object_del(backend, "targets");
+        for (i = 0; i < target_names_count; i++) {
+            BAKE_TRACE(provider->mid, "attempting to attach target[%u]: %s", i,
+                       target_names[i]);
+            ret = bake_provider_attach_target(provider, target_names[i], &tid);
+            if (ret == BAKE_ERR_NOENT) {
+                /* doesn't exist; attempt to create */
+                BAKE_TRACE(provider->mid, "attempting to create target[%u]: %s",
+                           i, target_names[i]);
+                ret = bake_provider_create_target(provider, target_names[i],
+                                                  default_initial_target_size,
+                                                  &tid);
+            }
+            if (ret != BAKE_SUCCESS) { goto error; }
+            BAKE_INFO(provider->mid, "attached target %s", target_names[i]);
+            free(target_names[i]);
+        }
+        free(target_names);
+    }
+
+    return (0);
+
+error:
+    if (target_names) {
+        for (i = 0; i < target_names_count; i++) {
+            if (target_names[i]) free(target_names[i]);
+        }
+        free(target_names);
+    }
+    return (ret);
 }
 
-int bake_target_set_conf(bake_provider_t  provider,
-                         bake_target_id_t tid,
-                         const char*      key,
-                         const char*      value)
+static int configure_targets(bake_provider_t     provider,
+                             struct json_object* _config)
 {
-    // TODO
-    return 0;
+    struct json_object* val;
+    struct json_object* backend;
+    int                 ret;
+
+    if (CONFIG_HAS(_config, "file_backend", backend)) {
+        BAKE_TRACE(provider->mid, "checking file_backend object in json");
+        ret = attach_targets(provider, "file", backend);
+        if (ret != BAKE_SUCCESS) return (ret);
+    }
+
+    if (CONFIG_HAS(_config, "pmem_backend", backend)) {
+        /* NOTE: the following configuration default setting is duplicated
+         * in the pmem backend as well.  We need it early here to make sure
+         * that if any pmem targets are created from scratch then we know
+         * what size to make them.
+         */
+        CONFIG_HAS_OR_CREATE(backend, int64, "default_initial_target_size",
+                             1073741824,
+                             "pmem_backend.default_initial_target_size", val);
+        BAKE_TRACE(provider->mid, "checking pmem_backend object in json");
+        ret = attach_targets(provider, "pmem", backend);
+        if (ret != BAKE_SUCCESS) return (ret);
+    }
+
+    return (0);
+}
+
+static int validate_and_complete_config(struct json_object* _config,
+                                        ABT_pool            _progress_pool)
+{
+    struct json_object* val;
+
+    /* populate default pipeline settings if not specified already */
+
+    /* pipeline yes or no; implies intermediate buffering */
+    CONFIG_HAS_OR_CREATE(_config, boolean, "pipeline_enable", 0,
+                         "pipeline_enable", val);
+    /* number of preallocated buffer pools */
+    CONFIG_HAS_OR_CREATE(_config, int64, "pipeline_npools", 4,
+                         "pipeline_npools", val);
+    /* buffers per buffer pool */
+    CONFIG_HAS_OR_CREATE(_config, int64, "pipeline_nbuffers_per_pool", 32,
+                         "pipeline_nbuffers_per_pool", val);
+    /* size of buffers in smallest pool */
+    CONFIG_HAS_OR_CREATE(_config, int64, "pipeline_first_buffer_size", 65536,
+                         "pipeline_first_buffer_size", val);
+    /* factor size increase per pool */
+    CONFIG_HAS_OR_CREATE(_config, int64, "pipeline_multiplier", 4,
+                         "pipeline_multiplier", val);
+
+    return (0);
+}
+
+char* bake_provider_get_config(bake_provider_t provider)
+{
+    const char* content = json_object_to_json_string_ext(
+        provider->json_cfg,
+        JSON_C_TO_STRING_PRETTY | JSON_C_TO_STRING_NOSLASHESCAPE);
+    return strdup(content);
+}
+
+int bake_create_raw_target(const char* path, size_t size)
+{
+    char* backend_type = NULL;
+    int   ret;
+
+    /* figure out the backend by searching until the ":" in the file name */
+    char* tmp = strchr(path, ':');
+    if (tmp != NULL) {
+        backend_type                              = strdup(path);
+        backend_type[(unsigned long)(tmp - path)] = '\0';
+        path                                      = tmp + 1;
+    } else {
+        backend_type = strdup("pmem");
+    }
+
+    if (strcmp(backend_type, "pmem") == 0) {
+        ret = g_bake_pmem_backend._create_raw_target(path, size);
+    } else if (strcmp(backend_type, "file") == 0) {
+        ret = g_bake_file_backend._create_raw_target(path, size);
+    } else {
+        fprintf(stderr, "ERROR: unknown backend type \"%s\"\n", backend_type);
+        free(backend_type);
+        return BAKE_ERR_BACKEND_TYPE;
+    }
+
+    free(backend_type);
+    return (ret);
 }

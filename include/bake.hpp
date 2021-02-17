@@ -1,6 +1,6 @@
 /*
  * (C) 2019 The University of Chicago
- * 
+ *
  * See COPYRIGHT in top-level directory.
  */
 #ifndef __BAKE_HPP
@@ -28,7 +28,12 @@ const char* const bake_error_messages[] = {
     "Access out of bound",
     "REMI error",
     "Operation not supported",
-    "Forbidden operation"
+    "Forbidden operation",
+    "Unknown backend type",
+    "Backend I/O error",
+    "Entry does not exist",
+    "Entry already exists",
+    "Not enough memory"
 };
 
 class client;

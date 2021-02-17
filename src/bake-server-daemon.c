@@ -101,6 +101,8 @@ int main(int argc, char** argv)
     struct options    opts;
     margo_instance_id mid;
     int               ret;
+    char*             show_conf = NULL;
+    bake_provider_t   provider;
 
     parse_args(argc, argv, &opts);
 
@@ -109,6 +111,7 @@ int main(int argc, char** argv)
     mid = margo_init(opts.listen_addr_str, MARGO_SERVER_MODE, 0, -1);
     if (mid == MARGO_INSTANCE_NULL) {
         fprintf(stderr, "Error: margo_init()\n");
+        free(opts.bake_pools);
         return (-1);
     }
 
@@ -126,6 +129,7 @@ int main(int argc, char** argv)
         hret = margo_addr_self(mid, &self_addr);
         if (hret != HG_SUCCESS) {
             fprintf(stderr, "Error: margo_addr_self()\n");
+            free(opts.bake_pools);
             margo_finalize(mid);
             return (-1);
         }
@@ -133,6 +137,7 @@ int main(int argc, char** argv)
                                     self_addr);
         if (hret != HG_SUCCESS) {
             fprintf(stderr, "Error: margo_addr_to_string()\n");
+            free(opts.bake_pools);
             margo_addr_free(mid, self_addr);
             margo_finalize(mid);
             return (-1);
@@ -141,6 +146,7 @@ int main(int argc, char** argv)
 
         fp = fopen(opts.host_file, "w");
         if (!fp) {
+            free(opts.bake_pools);
             perror("fopen");
             margo_finalize(mid);
             return (-1);
@@ -154,25 +160,30 @@ int main(int argc, char** argv)
     if (opts.mplex_mode == MODE_PROVIDERS) {
         int i;
         for (i = 0; i < opts.num_pools; i++) {
-            bake_provider_t  provider;
-            bake_target_id_t tid;
-            ret = bake_provider_register(mid, i + 1, BAKE_ABT_POOL_DEFAULT,
-                                         &provider);
+            bake_target_id_t               tid;
+            struct bake_provider_init_info bpargs           = {0};
+            char                           json_config[256] = {0};
+
+            if (opts.pipeline_enabled) {
+                sprintf(json_config, "{\"pipeline_enable\": true}");
+                bpargs.json_config = json_config;
+            }
+
+            ret = bake_provider_register(mid, i + 1, &bpargs, &provider);
 
             if (ret != 0) {
                 bake_perror("Error: bake_provider_register()", ret);
+                free(opts.bake_pools);
                 margo_finalize(mid);
                 return (-1);
             }
 
-            if (opts.pipeline_enabled)
-                bake_provider_set_conf(provider, "pipeline_enabled", "1");
-
-            ret = bake_provider_add_storage_target(provider, opts.bake_pools[i],
-                                                   &tid);
+            ret = bake_provider_attach_target(provider, opts.bake_pools[i],
+                                              &tid);
 
             if (ret != 0) {
-                bake_perror("Error: bake_provider_add_storage_target()", ret);
+                bake_perror("Error: bake_provider_attach_target()", ret);
+                free(opts.bake_pools);
                 margo_finalize(mid);
                 return (-1);
             }
@@ -183,26 +194,32 @@ int main(int argc, char** argv)
 
     } else {
 
-        int             i;
-        bake_provider_t provider;
-        ret = bake_provider_register(mid, 1, BAKE_ABT_POOL_DEFAULT, &provider);
+        int                            i;
+        struct bake_provider_init_info bpargs           = {0};
+        char                           json_config[256] = {0};
+
+        if (opts.pipeline_enabled) {
+            sprintf(json_config, "{\"pipeline_enable\": true}");
+            bpargs.json_config = json_config;
+        }
+
+        ret = bake_provider_register(mid, 1, &bpargs, &provider);
 
         if (ret != 0) {
             bake_perror("Error: bake_provider_register()", ret);
+            free(opts.bake_pools);
             margo_finalize(mid);
             return (-1);
         }
 
-        if (opts.pipeline_enabled)
-            bake_provider_set_conf(provider, "pipeline_enabled", "1");
-
         for (i = 0; i < opts.num_pools; i++) {
             bake_target_id_t tid;
-            ret = bake_provider_add_storage_target(provider, opts.bake_pools[i],
-                                                   &tid);
+            ret = bake_provider_attach_target(provider, opts.bake_pools[i],
+                                              &tid);
 
             if (ret != 0) {
-                bake_perror("Error: bake_provider_add_storage_target()", ret);
+                bake_perror("Error: bake_provider_attach_target()", ret);
+                free(opts.bake_pools);
                 margo_finalize(mid);
                 return (-1);
             }
@@ -210,6 +227,12 @@ int main(int argc, char** argv)
             printf("Provider 0 managing new target at multiplex id %d\n", 1);
         }
     }
+
+    printf("Bake provider config:\n");
+    printf("=====================\n");
+    show_conf = bake_provider_get_config(provider);
+    printf("%s\n", show_conf);
+    free(show_conf);
 
     /* suspend until the BAKE server gets a shutdown signal from the client */
     margo_wait_for_finalize(mid);

@@ -14,6 +14,15 @@
 extern "C" {
 #endif
 
+#define BAKE_TRACE(_mid, _format, f...) margo_trace(_mid, "bake: " _format, ##f)
+#define BAKE_DEBUG(_mid, _format, f...) margo_debug(_mid, "bake: " _format, ##f)
+#define BAKE_INFO(_mid, _format, f...)  margo_info(_mid, "bake: " _format, ##f)
+#define BAKE_WARNING(_mid, _format, f...) \
+    margo_warning(_mid, "bake: " _format, ##f)
+#define BAKE_ERROR(_mid, _format, f...) margo_error(_mid, "bake: " _format, ##f)
+#define BAKE_CRITICAL(_mid, _format, f...) \
+    margo_critical(_mid, "bake: " _format, ##f)
+
 typedef struct {
     uuid_t id;
 } bake_target_id_t;
@@ -29,8 +38,9 @@ typedef struct {
 #define BAKE_SUCCESS         0    /* Success */
 #define BAKE_ERR_ALLOCATION  (-1) /* Error allocating something */
 #define BAKE_ERR_INVALID_ARG (-2) /* An argument is invalid */
-#define BAKE_ERR_MERCURY     (-3) /* An error happened calling a Mercury function \
-                                   */
+#define BAKE_ERR_MERCURY                                 \
+    (-3) /* An error happened calling a Mercury function \
+          */
 #define BAKE_ERR_ARGOBOTS \
     (-4)                   /* An error happened calling an Argobots function */
 #define BAKE_ERR_PMEM (-5) /* An error happened calling a pmem function */
@@ -45,7 +55,10 @@ typedef struct {
 #define BAKE_ERR_FORBIDDEN      (-12) /* Forbidden operation */
 #define BAKE_ERR_BACKEND_TYPE   (-13) /* Unknown backend type */
 #define BAKE_ERR_IO             (-14) /* Back-end I/O error */
-#define BAKE_ERR_END            (-15) /* End of valid bake error codes */
+#define BAKE_ERR_NOENT          (-15) /* entry does not exist */
+#define BAKE_ERR_EXIST          (-16) /* entry already exists */
+#define BAKE_ERR_NOMEM          (-17) /* entry already exists */
+#define BAKE_ERR_END            (-18) /* End of valid bake error codes */
 
 /**
  * Print bake errors in human-friendly form

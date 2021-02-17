@@ -1,0 +1,79 @@
+{
+    "margo" : {
+        "argobots": {
+            "pools" : [
+                {
+                    "name" : "io_pool"
+                }
+            ],
+            "xstreams" : [
+                {
+                    "name" : "io1",
+                    "scheduler" : {
+                        "type" : "basic_wait",
+                        "pools" : [ "io_pool" ]
+                    }
+                },
+                {
+                    "name" : "io2",
+                    "scheduler" : {
+                        "type" : "basic_wait",
+                        "pools" : [ "io_pool" ]
+                    }
+                },
+                {
+                    "name" : "io3",
+                    "scheduler" : {
+                        "type" : "basic_wait",
+                        "pools" : [ "io_pool" ]
+                    }
+                },
+                {
+                    "name" : "io4",
+                    "scheduler" : {
+                        "type" : "basic_wait",
+                        "pools" : [ "io_pool" ]
+                    }
+                }
+            ]
+        }
+    },
+    "abt_io" : [
+        {
+            "name" : "bake_abt_io",
+            "pool" : "io_pool"
+        }
+    ],
+    "libraries" : {
+        "bake" : "libbake-bedrock.so"
+    },
+    "providers" : [
+        {
+            "name" : "my_bake_provider",
+            "type" : "bake",
+            "provider_id" : 1,
+            "pool" : "__primary__",
+            "config" : {
+              "pipeline_enable":true,
+              "pipeline_npools":4,
+              "pipeline_nbuffers_per_pool":32,
+              "pipeline_first_buffer_size":65536,
+              "pipeline_multiplier":4,
+              "file_backend":{
+                "targets":[
+                  "./file-target-A.dat"
+                ],
+                "alignment":4096
+              },
+              "pmem_backend":{
+                "targets":[
+                  "./pmem-target-A.dat"
+                ]
+              }
+            },
+            "dependencies" : {
+                "abt_io" : "bake_abt_io"
+            }
+        }
+    ]
+}

@@ -6,7 +6,7 @@ bin_SCRIPTS =
 noinst_PROGRAMS =
 noinst_HEADERS =
 TESTS =
-XFAIL_TESTS = 
+XFAIL_TESTS =
 check_PROGRAMS =
 EXTRA_PROGRAMS =
 CLEANFILES = $(bin_SCRIPTS)
@@ -23,7 +23,7 @@ include_HEADERS = include/bake.h\
 TESTS_ENVIRONMENT =
 
 EXTRA_DIST += \
- prepare.sh 
+ prepare.sh
 
 AM_CPPFLAGS = -I$(top_srcdir)/include
 
@@ -36,6 +36,10 @@ AM_CXXFLAGS = $(AM_CFLAGS)
 lib_LTLIBRARIES = src/libbake-client.la src/libbake-server.la
 src_libbake_client_la_SOURCES =
 src_libbake_server_la_SOURCES =
+if ENABLE_BEDROCK
+lib_LTLIBRARIES += src/libbake-bedrock.la
+src_libbake_bedrock_la_SOURCES =
+endif
 
 LDADD = src/libbake-client.la src/libbake-server.la
 

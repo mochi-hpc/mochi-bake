@@ -1,10 +1,12 @@
 #include <assert.h>
+#include <json-c/json.h>
 #include "bake-config.h"
 #include "bake.h"
 #include "bake-rpc.h"
 #include "bake-server.h"
 #include "bake-provider.h"
 #include "bake-backend.h"
+#include "bake-macros.h"
 
 /* definition of BAKE root data structure (just a uuid for now) */
 typedef struct {
@@ -51,13 +53,13 @@ typedef struct xfer_args {
 
 static void xfer_ult(void* _args);
 
-int bake_makepool(const char* pool_name, size_t pool_size, mode_t pool_mode)
+static int bake_pmem_makepool(const char* pool_name, size_t pool_size)
 {
     PMEMobjpool* pool;
     PMEMoid      root_oid;
     bake_root_t* root;
 
-    pool = pmemobj_create(pool_name, NULL, pool_size, pool_mode);
+    pool = pmemobj_create(pool_name, NULL, pool_size, 0644);
     if (!pool) {
         fprintf(stderr, "pmemobj_create: %s\n", pmemobj_errormsg());
         return BAKE_ERR_PMEM;
@@ -83,19 +85,30 @@ static int bake_pmem_backend_initialize(bake_provider_t    provider,
 {
     bake_pmem_entry_t* new_context
         = (bake_pmem_entry_t*)calloc(1, sizeof(*new_context));
-    char* tmp             = strrchr(path, '/');
-    new_context->provider = provider;
-    new_context->filename = strdup(tmp);
-    ptrdiff_t d           = tmp - path;
-    new_context->root     = strndup(path, d);
+    char* tmp                             = strrchr(path, '/');
+    new_context->provider                 = provider;
+    new_context->filename                 = strdup(tmp);
+    ptrdiff_t d                           = tmp - path;
+    new_context->root                     = strndup(path, d);
+    struct json_object* pmem_backend_json = NULL;
+    struct json_object* target_array      = NULL;
+    struct json_object* val               = NULL;
+
+    CONFIG_HAS_OR_CREATE_OBJECT(provider->json_cfg, "pmem_backend",
+                                "pmem_backend", pmem_backend_json);
+    CONFIG_HAS_OR_CREATE(pmem_backend_json, int64,
+                         "default_initial_target_size", 1073741824,
+                         "pmem_backend.default_initial_target_size", val);
+    CONFIG_HAS_OR_CREATE_ARRAY(pmem_backend_json, "targets",
+                               "pmem_backend.targets", target_array);
 
     new_context->pmem_pool = pmemobj_open(path, NULL);
     if (!(new_context->pmem_pool)) {
-        fprintf(stderr, "pmemobj_open: %s\n", pmemobj_errormsg());
+        BAKE_ERROR(provider->mid, "pmemobj_open: %s", pmemobj_errormsg());
         free(new_context->filename);
         free(new_context->root);
         free(new_context);
-        return BAKE_ERR_PMEM;
+        return BAKE_ERR_NOENT;
     }
 
     /* check to make sure the root is properly set */
@@ -105,14 +118,18 @@ static int bake_pmem_backend_initialize(bake_provider_t    provider,
     bake_target_id_t tid   = new_context->pmem_root->pool_id;
 
     if (uuid_is_null(tid.id)) {
-        fprintf(stderr, "Error: BAKE pool %s is not properly initialized\n",
-                path);
+        BAKE_ERROR(provider->mid, "pool %s is not properly initialized", path);
         pmemobj_close(new_context->pmem_pool);
         free(new_context->filename);
         free(new_context->root);
         free(new_context);
         return BAKE_ERR_UNKNOWN_TARGET;
     }
+
+    /* target successfully added; inject it into the json in array of
+     * targets for this backend
+     */
+    json_object_array_add(target_array, json_object_new_string(path));
 
     *target  = tid;
     *context = new_context;
@@ -193,7 +210,8 @@ static int write_transfer_data(margo_instance_id mid,
     /* resolve addr, could be addr of rpc sender (normal case) or a third
      * party (proxy write)
      */
-    if (provider->config.pipeline_enable == 0) {
+    if (!json_object_get_boolean(
+            json_object_object_get(provider->json_cfg, "pipeline_enable"))) {
         /* normal path; no pipeline or intermediate buffers */
 
         /* create bulk handle for local side of transfer */
@@ -671,33 +689,27 @@ error:
 }
 #endif
 
-static int bake_pmem_set_conf(backend_context_t context,
-                              const char*       key,
-                              const char*       value)
-{
-    return 0;
-}
-
-bake_backend g_bake_pmem_backend
-    = {.name                       = "pmem",
-       ._initialize                = bake_pmem_backend_initialize,
-       ._finalize                  = bake_pmem_backend_finalize,
-       ._create                    = bake_pmem_create,
-       ._write_raw                 = bake_pmem_write_raw,
-       ._write_bulk                = bake_pmem_write_bulk,
-       ._read_raw                  = bake_pmem_read_raw,
-       ._read_bulk                 = bake_pmem_read_bulk,
-       ._persist                   = bake_pmem_persist,
-       ._create_write_persist_raw  = bake_pmem_create_write_persist_raw,
-       ._create_write_persist_bulk = bake_pmem_create_write_persist_bulk,
-       ._get_region_size           = bake_pmem_get_region_size,
-       ._get_region_data           = bake_pmem_get_region_data,
-       ._remove                    = bake_pmem_remove,
-       ._migrate_region            = bake_pmem_migrate_region,
+bake_backend g_bake_pmem_backend = {
+    .name                       = "pmem",
+    ._initialize                = bake_pmem_backend_initialize,
+    ._finalize                  = bake_pmem_backend_finalize,
+    ._create                    = bake_pmem_create,
+    ._write_raw                 = bake_pmem_write_raw,
+    ._write_bulk                = bake_pmem_write_bulk,
+    ._read_raw                  = bake_pmem_read_raw,
+    ._read_bulk                 = bake_pmem_read_bulk,
+    ._persist                   = bake_pmem_persist,
+    ._create_write_persist_raw  = bake_pmem_create_write_persist_raw,
+    ._create_write_persist_bulk = bake_pmem_create_write_persist_bulk,
+    ._get_region_size           = bake_pmem_get_region_size,
+    ._get_region_data           = bake_pmem_get_region_data,
+    ._remove                    = bake_pmem_remove,
+    ._migrate_region            = bake_pmem_migrate_region,
+    ._create_raw_target         = bake_pmem_makepool,
 #ifdef USE_REMI
-       ._create_fileset = bake_pmem_create_fileset,
+    ._create_fileset = bake_pmem_create_fileset,
 #endif
-       ._set_conf = bake_pmem_set_conf};
+};
 
 static void xfer_ult(void* _args)
 {

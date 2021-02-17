@@ -157,10 +157,10 @@ int bake_client_init(margo_instance_id mid, bake_client_t* client)
 int bake_client_finalize(bake_client_t client)
 {
     if (client->num_provider_handles != 0) {
-        fprintf(stderr,
-                "[BAKE] Warning: %llu provider handles not released before "
-                "bake_client_finalize was called\n",
-                (long long unsigned int)client->num_provider_handles);
+        BAKE_WARNING(client->mid,
+                     "%llu provider handles not released before "
+                     "bake_client_finalize was called\n",
+                     (long long unsigned int)client->num_provider_handles);
     }
     free(client);
     return BAKE_SUCCESS;

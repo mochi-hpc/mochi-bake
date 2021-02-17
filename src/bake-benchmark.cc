@@ -568,7 +568,6 @@ static void run_server(MPI_Comm comm, Json::Value& config) {
     auto& server_config = config["server"];
     bool use_progress_thread = server_config["use-progress-thread"].asBool();
     int  rpc_thread_count = server_config["rpc-thread-count"].asInt();
-    auto& provider_config = server_config["provider-config"];
     mid = margo_init(protocol.c_str(), MARGO_SERVER_MODE, use_progress_thread, rpc_thread_count);
     margo_enable_remote_shutdown(mid);
     // serialize server address
@@ -586,12 +585,7 @@ static void run_server(MPI_Comm comm, Json::Value& config) {
     // initialize database
     auto& target_config = server_config["target"];
     std::string tgt_path = target_config["path"].asString();
-    provider->add_storage_target(tgt_path);
-    for(auto it = provider_config.begin(); it != provider_config.end(); it++) {
-        std::string key = it.key().asString();
-        std::string value = provider_config[key].asString();
-        provider->set_config(key.c_str(), value.c_str());
-    }
+    provider->attach_target(tgt_path);
     // notify clients that the database is ready
     MPI_Barrier(MPI_COMM_WORLD);
     // wait for finalize
