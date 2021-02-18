@@ -5,10 +5,11 @@
         "use-progress-thread" : false,
         "rpc-thread-count" : 0,
         "target" : {
-            "path" : "/dev/shm/myTarget"
+            "path" : "/dev/shm/myTarget",
+            "size" : 104857600
         },
         "provider-config" : {
-            "pipeline_enabled" : "0" 
+            "pipeline_enabled" : "0"
         }
     },
     "benchmarks" : [

@@ -68,7 +68,7 @@ class provider {
     static provider* create(margo_instance_id  mid,
                             uint16_t           provider_id = 0,
                             ABT_pool           pool        = ABT_POOL_NULL,
-                            const std::string& config      = "",
+                            const std::string& config      = "{}",
                             abt_io_instance_id abtio = ABT_IO_INSTANCE_NULL,
                             void*              remi_provider = NULL,
                             void*              remi_client   = NULL)

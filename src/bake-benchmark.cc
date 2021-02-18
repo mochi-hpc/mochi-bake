@@ -585,7 +585,8 @@ static void run_server(MPI_Comm comm, Json::Value& config) {
     // initialize database
     auto& target_config = server_config["target"];
     std::string tgt_path = target_config["path"].asString();
-    provider->attach_target(tgt_path);
+    size_t tgt_size = target_config["size"].asUInt64();
+    provider->create_target(tgt_path, tgt_size);
     // notify clients that the database is ready
     MPI_Barrier(MPI_COMM_WORLD);
     // wait for finalize
