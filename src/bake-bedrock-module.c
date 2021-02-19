@@ -76,11 +76,12 @@ static char* bake_get_provider_config(bedrock_module_provider_t provider)
     return (bake_provider_get_config(provider));
 }
 
-static int bake_init_client(margo_instance_id        mid,
+static int bake_init_client(bedrock_args_t           args,
                             bedrock_module_client_t* client)
 {
     int ret;
 
+    margo_instance_id mid = bedrock_args_get_margo_instance(args);
     BAKE_TRACE(mid, "bake_init_client()");
 
     ret = bake_client_init(mid, (bake_client_t*)client);
@@ -97,6 +98,11 @@ static int bake_finalize_client(bedrock_module_client_t client)
     if (ret < 0) return (-1);
 
     return BEDROCK_SUCCESS;
+}
+
+static char* bake_get_client_config(bedrock_module_client_t client)
+{
+    return strdup("{}");
 }
 
 static int bake_create_provider_handle(bedrock_module_client_t client,
@@ -128,10 +134,13 @@ static int bake_destroy_provider_handle(bedrock_module_provider_handle_t ph)
  * - if needed by not provided as a dependency, then the backend will create
  *   one of it's own implicitly
  */
-struct bedrock_dependency bake_deps[4] = {{"abt_io", "abt_io", 0},
-                                          {"remi_provider", "remi", 0},
-                                          {"remi_client", "remi", 0},
-                                          BEDROCK_NO_MORE_DEPENDENCIES};
+struct bedrock_dependency bake_provider_deps[4]
+    = {{"abt_io", "abt_io", 0},
+       {"remi_provider", "remi", 0},
+       {"remi_client", "remi", 0},
+       BEDROCK_NO_MORE_DEPENDENCIES};
+
+struct bedrock_dependency bake_client_deps[1] = {BEDROCK_NO_MORE_DEPENDENCIES};
 
 static struct bedrock_module bake
     = {.register_provider       = bake_register_provider,
@@ -139,8 +148,10 @@ static struct bedrock_module bake
        .get_provider_config     = bake_get_provider_config,
        .init_client             = bake_init_client,
        .finalize_client         = bake_finalize_client,
+       .get_client_config       = bake_get_client_config,
        .create_provider_handle  = bake_create_provider_handle,
        .destroy_provider_handle = bake_destroy_provider_handle,
-       .dependencies            = bake_deps};
+       .provider_dependencies   = bake_provider_deps,
+       .client_dependencies     = bake_client_deps};
 
 BEDROCK_REGISTER_MODULE(bake, bake)
