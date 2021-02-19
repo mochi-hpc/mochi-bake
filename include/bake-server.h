@@ -34,6 +34,31 @@ struct bake_provider_init_info {
     void*              remi_client;   /* optional REMI client */
 };
 
+/**
+ * Example JSON configuration:
+ * ----------------------------------------------
+{
+  "pipeline_enable":true,
+  "file_backend":{
+    "targets":[
+      "./file-target-A.dat"
+    ],
+    "abtio_nthreads":16
+    "alignment":512
+  },
+  "pmem_backend":{
+    "targets":[
+      "./pmem-target-A.dat"
+    ]
+  }
+}
+
+ * See the examples/ subdirectory in this repository for more advanced json
+ * specifications.
+ *
+ * ----------------------------------------------
+ */
+
 #define BAKE_PROVIDER_INIT_INFO_INITIALIZER                   \
     {                                                         \
         NULL, ABT_POOL_NULL, ABT_IO_INSTANCE_NULL, NULL, NULL \
