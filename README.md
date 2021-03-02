@@ -1,20 +1,33 @@
-# BAKE
+# Bake
+
+Bake is a microservice (a Mochi provider) for high performance bulk
+storage of raw data regions.  Bake uses modular backends to store data
+on persistent memory, conventional file systems, or other storage media.
+
+See https://www.mcs.anl.gov/research/projects/mochi/ and
+https://mochi.readthedocs.io/en/latest/ for more information about Mochi.
+
+Bake's scope is limited exclusively to data storage.  Capabilities such as
+indexing, name spaces, and sharding must be provided by other microservice
+components.
 
 ## Installation
 
-BAKE can easily be installed using Spack:
+The easiest way to install Bake is through spack:
 
 `spack install bake`
 
-This will install BAKE and its dependencies (margo, uuid, and libpmem,
-as well as their respective dependencies). To compile and install BAKE manually,
-please refer to the end of this document.
+This will install BAKE and its dependencies.  Please refer to the end of the
+document for manual compilation instructions.
 
 ## Architecture
 
 Like most Mochi services, BAKE relies on a client/provider architecture.
 A provider, identified by its _address_ and _multiplex id_, manages one or more
 _BAKE targets_, referenced externally by their _target id_.
+
+A target can be thought of as a storage device.  This may be (for example) a
+PMDK volume or a local file system.
 
 ## Setting up a BAKE target
 
@@ -24,12 +37,11 @@ BAKE requires the backend storage file to be created beforehand using
 `bake-mkpool -s 500M /dev/shm/foo.dat`
 
 creates a 500 MB file at _/dev/shm/foo.dat_ to be used by BAKE as a target.
-
-The bake-mkpool command creates a BAKE pool used to store raw data for
-a particular BAKE target. This is essentially a wrapper command around
-pmemobj utilities for creating an empty pool that additionally stores
-some BAKE-specific metadata in the created pool. Pools used by BAKE
-providers must be created using this command.
+Bake will use the `pmem` (persistent memory) backend by default, which means
+that the underlying file will memory mapped for access usign the PMDK
+library.  You can also providie an explicit prefix (such as `file:` for the
+conventional file backend or `pmem:` for the persistent memory backend) to
+dictate a specific target type.
 
 ## Starting a daemon
 
@@ -56,7 +68,20 @@ different multiplex ids 1, 2, ... _N_ where _N_ is the number of storage targets
 to manage. The _targets_ mode indicates that a single provider should be used to
 manage all the storage targets.
 
+## Integrating Bake into a larger service
+
+Bake is not intended to be a standalone user-facing service.  See
+https://mochi.readthedocs.io/en/latest/bedrock.html for guidance on how to
+integrate it with other providers using Mochi's Bedrock capability.
+
 ## Client API example
+
+Data is stored in `regions` within a `target` using explicit create,
+write, and persist operations.  The caller cannot dictate the region id
+that will be used to reference a region; this identifier is generated
+by Bake at creation time.  The region size must be specified at creation
+time as well; there is no mechanism for extending the size of an existing
+region.
 
 ```c
 #include <bake-client.h>
@@ -71,10 +96,10 @@ int main(int argc, char **argv)
     uint8_t mplex_id; // multiplex id of the provider
     uint32_t target_number; // target to use
     bake_region_id_t rid; // BAKE region id handle
-	bake_target_id_t* bti; // array of target ids 
-	
+	bake_target_id_t* bti; // array of target ids
+
 	/* ... setup variables ... */
-	
+
 	/* Initialize Margo */
 	mid = margo_init(..., MARGO_CLIENT_MODE, 0, -1);
 	/* Lookup the server */
@@ -109,9 +134,9 @@ int main(int argc, char **argv)
 }
 ```
 
-Note that a `bake_region_id_t` object can be written (into a file or a socket)
-and stored or sent to another program. These region ids are what uniquely
-reference a region within a given target.
+Note that a `bake_region_id_t` object is persistent.  It can be written
+(into a file or a socket) and stored or sent to another program. These
+region ids are what uniquely reference a region within a given target.
 
 The rest of the client-side API can be found in `bake-client.h`.
 
@@ -122,44 +147,26 @@ attach storage targets to them. The provider-side API is located in
 _bake-server.h_, and consists of mainly two functions:
 
 ```c
-int bake_provider_register(
-        margo_instance_id mid,
-        uint8_t mplex_id,
-        ABT_pool pool,
-        bake_provider_t* provider);
+int bake_provider_register(margo_instance_id                     mid,
+                           uint16_t                              provider_id,
+                           const struct bake_provider_init_info* args,
+                           bake_provider_t*                      provider);
 ```
 
-This creates a provider at the given multiplex id, using a given Argobots pool.
+This creates a provider at the given provider id using the specified margo
+instance.  The `args` parameter can be used to modify default settings,
+including passing in a fully specified json configuration block.  See
+`bake-server.h` for details.
 
 ```c
-int bake_provider_add_storage_target(
-        bake_provider_t provider,
-        const char *target_name,
-        bake_target_id_t* target_id);
+int bake_provider_attach_target(bake_provider_t   provider,
+                                const char*       target_name,
+                                bake_target_id_t* target_id);
 ```
 
 This makes the provider manage the given storage target.
 
-Other functions are available to remove a storage target (or all storage
-targets) from a provider.
-
-## Latency benchmark execution example
-
-* `./bake-latency-bench sm:///tmp/cci/sm/carns-x1/1/1 100000 4 8`
-
-This example runs a sequence of latency benchmarks.  Other utilities
-installed with BAKE will perform other rudimentary operations.
-
-The first argument is the address of the server.  We are using CCI/SM in this
-case, which means that the URL is a path to the connection information of the
-server in /tmp.  The base (not changeable) portion of the path is
-/tmp/cci/HOSTNAME.  The remainder of the path was specified by the server
-daemon when it started.
-
-The second argument is the number of benchmark iterations.
-
-The third and fourth arguments specify the range of sizes to use for read and
-write operations in the benchmark.
+Other functions are available to create and detach targets from a provider.
 
 ## Generic Bake benchmark
 
@@ -211,36 +218,18 @@ The following table describes each type of benchmark and their parameters.
 |                      | preregister-bulk  | false   | Whether to preregister the client's buffer for RDMA               |
 |                      | erase-on-teardown | true    | Whether to remove the regions after the benchmark                 |
 
-
-## Misc tips
-
-Memory allocation seems to account for a significant portion of
-the latency as of this writing.  The tcmalloc library will lower and
-stabilize latency somewhat as a partial short-term solution.  On ubuntu
-you can use tcmalloc by running this in the terminal before the server
-and client commands:
-
-export LD_PRELOAD=/usr/lib/libtcmalloc.so.4
-
 ## Manual installation
 
 BAKE depends on the following libraries:
 
 * uuid (install uuid-dev package on ubuntu)
-* NVML/libpmem (see instructions below)
-* margo (see instructions [here](https://xgitlab.cels.anl.gov/sds/margo))
+* PMDK (see instructions below)
+* json-c
+* mochi-abt-io
+* mochi-margo
 
-Yu can compile and install the latest git revision of NVML as follows:
-
-* `git clone https://github.com/pmem/nvml.git`
-* `cd nvml`
-* `make`
-* `make install prefix=/home/carns/working/install/`
-
-`make install` will require `pandoc` or you can ignore the error and not build
-the documentation.
-
-To compile BAKE:
+Bake will automatically identify these dependencies at configure time using
+pkg-config. To compile BAKE:
 
 * `./prepare.sh`
 * `mkdir build`
