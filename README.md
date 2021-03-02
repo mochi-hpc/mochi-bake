@@ -1,6 +1,6 @@
 # Bake
 
-Bake is a microservice (a Mochi provider) for high performance bulk
+Bake is a microservice (i.e., Mochi provider) for high performance bulk
 storage of raw data regions.  Bake uses modular backends to store data
 on persistent memory, conventional file systems, or other storage media.
 
