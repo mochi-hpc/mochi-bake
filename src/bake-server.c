@@ -1196,6 +1196,9 @@ static int validate_and_complete_config(struct json_object* _config,
 {
     struct json_object* val;
 
+    /* report version number for this component */
+    CONFIG_OVERRIDE_STRING(_config, "version", PACKAGE_VERSION, "version", 1);
+
     /* populate default pipeline settings if not specified already */
 
     /* pipeline yes or no; implies intermediate buffering */
