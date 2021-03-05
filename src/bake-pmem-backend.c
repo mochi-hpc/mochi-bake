@@ -85,14 +85,23 @@ static int bake_pmem_backend_initialize(bake_provider_t    provider,
 {
     bake_pmem_entry_t* new_context
         = (bake_pmem_entry_t*)calloc(1, sizeof(*new_context));
-    char* tmp                             = strrchr(path, '/');
-    new_context->provider                 = provider;
-    new_context->filename                 = strdup(tmp);
-    ptrdiff_t d                           = tmp - path;
-    new_context->root                     = strndup(path, d);
     struct json_object* pmem_backend_json = NULL;
     struct json_object* target_array      = NULL;
     struct json_object* val               = NULL;
+    char*               tmp               = NULL;
+
+    new_context->provider = provider;
+    tmp                   = strrchr(path, '/');
+    if (tmp) {
+        /* provided path includes a directory component */
+        ptrdiff_t d           = tmp - path;
+        new_context->filename = strdup(tmp);
+        new_context->root     = strndup(path, d);
+    } else {
+        /* target is in current directory */
+        new_context->filename = strdup(path);
+        new_context->root     = strdup("./");
+    }
 
     CONFIG_HAS_OR_CREATE_OBJECT(provider->json_cfg, "pmem_backend",
                                 "pmem_backend", pmem_backend_json);
