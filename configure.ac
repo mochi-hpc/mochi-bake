@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.63])
-AC_INIT([bake], [0.3.4], [],[],[]) 
+AC_INIT([bake], [0.6], [],[],[]) 
 AC_CONFIG_MACRO_DIR([m4])
 LT_INIT
 
@@ -89,6 +89,13 @@ CFLAGS="$UUID_CFLAGS $CFLAGS"
 PKG_CHECK_MODULES([JSONC],[json-c],[],
    [AC_MSG_ERROR([Could not find working json-c installation!])])
 LIBS="$JSONC_LIBS $LIBS"
+dnl
+dnl Note that pkg-config may report an include path that contains a
+dnl "/json-c" component.  If so, strip it out.  We prefer to use an explicit
+dnl subdir path in the source to to avoid potential header name conflicts
+dnl with other json libraries.
+dnl
+JSONC_CFLAGS=`echo $JSONC_CFLAGS | sed 's/\/include\/json-c/\/include/g'`
 CPPFLAGS="$JSONC_CFLAGS $CPPFLAGS"
 CFLAGS="$JSONC_CFLAGS $CFLAGS"
 

@@ -98,7 +98,7 @@ int bake_provider_register(margo_instance_id                     mid,
         }
     }
 
-    if (args.json_config) {
+    if (args.json_config && strlen(args.json_config) > 0) {
         /* read JSON config from provided string argument */
         struct json_tokener*    tokener = json_tokener_new();
         enum json_tokener_error jerr;
@@ -1195,6 +1195,9 @@ static int validate_and_complete_config(struct json_object* _config,
                                         ABT_pool            _progress_pool)
 {
     struct json_object* val;
+
+    /* report version number for this component */
+    CONFIG_OVERRIDE_STRING(_config, "version", PACKAGE_VERSION, "version", 1);
 
     /* populate default pipeline settings if not specified already */
 

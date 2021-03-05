@@ -80,4 +80,23 @@ static const int json_type_int64 = json_type_int;
          && (__element = json_object_array_get_idx(__array, __index)); \
          __index++)
 
+// Overrides a field with a string. If the field already existed and was
+// different from the new value, and __warning is true, prints a warning.
+#define CONFIG_OVERRIDE_STRING(__config, __key, __value, __fullname,         \
+                               __warning)                                    \
+    do {                                                                     \
+        struct json_object* _tmp = json_object_object_get(__config, __key);  \
+        if (_tmp && __warning) {                                             \
+            if (!json_object_is_type(_tmp, json_type_string))                \
+                BAKE_WARNING(0, "Overriding field \"%s\" with value \"%s\"", \
+                             __fullname, __value);                           \
+            else if (strcmp(json_object_get_string(_tmp), __value) != 0)     \
+                BAKE_WARNING(                                                \
+                    0, "Overriding field \"%s\" (\"%s\") with value \"%s\"", \
+                    __fullname, json_object_get_string(_tmp), __value);      \
+        }                                                                    \
+        _tmp = json_object_new_string(__value);                              \
+        json_object_object_add(__config, __key, _tmp);                       \
+    } while (0)
+
 #endif /* __BAKE_MACROS */
