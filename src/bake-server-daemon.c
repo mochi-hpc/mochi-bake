@@ -161,21 +161,25 @@ int main(int argc, char** argv)
         int i;
         for (i = 0; i < opts.num_pools; i++) {
             bake_target_id_t               tid;
-            struct bake_provider_init_info bpargs           = {0};
-            char                           json_config[256] = {0};
-
-            if (opts.pipeline_enabled) {
-                sprintf(json_config, "{\"pipeline_enable\": true}");
-                bpargs.json_config = json_config;
-            }
+            struct bake_provider_init_info bpargs = {0};
 
             ret = bake_provider_register(mid, i + 1, &bpargs, &provider);
-
             if (ret != 0) {
                 bake_perror("Error: bake_provider_register()", ret);
                 free(opts.bake_pools);
                 margo_finalize(mid);
                 return (-1);
+            }
+
+            if (opts.pipeline_enabled) {
+                ret = bake_provider_set_param(provider, "pipeline_enable",
+                                              "true");
+                if (ret != 0) {
+                    bake_perror("Error: bake_provider_set_param()", ret);
+                    free(opts.bake_pools);
+                    margo_finalize(mid);
+                    return (-1);
+                }
             }
 
             ret = bake_provider_attach_target(provider, opts.bake_pools[i],
@@ -195,21 +199,24 @@ int main(int argc, char** argv)
     } else {
 
         int                            i;
-        struct bake_provider_init_info bpargs           = {0};
-        char                           json_config[256] = {0};
-
-        if (opts.pipeline_enabled) {
-            sprintf(json_config, "{\"pipeline_enable\": true}");
-            bpargs.json_config = json_config;
-        }
+        struct bake_provider_init_info bpargs = {0};
 
         ret = bake_provider_register(mid, 1, &bpargs, &provider);
-
         if (ret != 0) {
             bake_perror("Error: bake_provider_register()", ret);
             free(opts.bake_pools);
             margo_finalize(mid);
             return (-1);
+        }
+
+        if (opts.pipeline_enabled) {
+            ret = bake_provider_set_param(provider, "pipeline_enable", "true");
+            if (ret != 0) {
+                bake_perror("Error: bake_provider_set_param()", ret);
+                free(opts.bake_pools);
+                margo_finalize(mid);
+                return (-1);
+            }
         }
 
         for (i = 0; i < opts.num_pools; i++) {

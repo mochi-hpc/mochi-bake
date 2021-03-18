@@ -1060,25 +1060,33 @@ static int setup_poolset(bake_provider_t provider)
      * checking on the json here
      */
 
-    /* nothing to do if pipelining is disabled */
-    if (!json_object_get_boolean(
+    /* create poolset if we don't have one yet but pipelining is enabled */
+    if (provider->poolset == NULL
+        && json_object_get_boolean(
             json_object_object_get(provider->json_cfg, "pipeline_enable"))) {
-        return (0);
+        hret = margo_bulk_poolset_create(
+            provider->mid,
+            json_object_get_int(
+                json_object_object_get(provider->json_cfg, "pipeline_npools")),
+            json_object_get_int(json_object_object_get(
+                provider->json_cfg, "pipeline_nbuffers_per_pool")),
+            json_object_get_int(json_object_object_get(
+                provider->json_cfg, "pipeline_first_buffer_size")),
+            json_object_get_int(json_object_object_get(provider->json_cfg,
+                                                       "pipeline_multiplier")),
+            HG_BULK_READWRITE, &(provider->poolset));
+        if (hret != 0) return BAKE_ERR_MERCURY;
     }
 
-    hret = margo_bulk_poolset_create(
-        provider->mid,
-        json_object_get_int(
-            json_object_object_get(provider->json_cfg, "pipeline_npools")),
-        json_object_get_int(json_object_object_get(
-            provider->json_cfg, "pipeline_nbuffers_per_pool")),
-        json_object_get_int(json_object_object_get(
-            provider->json_cfg, "pipeline_first_buffer_size")),
-        json_object_get_int(
-            json_object_object_get(provider->json_cfg, "pipeline_multiplier")),
-        HG_BULK_READWRITE, &(provider->poolset));
-    if (hret != 0) return BAKE_ERR_MERCURY;
+    /* destroy poolset if we have one but pipelining has been disabled */
+    if (provider->poolset
+        && !json_object_get_boolean(
+            json_object_object_get(provider->json_cfg, "pipeline_enable"))) {
+        hret = margo_bulk_poolset_destroy(provider->poolset);
+        if (hret != 0) return BAKE_ERR_MERCURY;
+    }
 
+    /* otherwise nothing to do here */
     return BAKE_SUCCESS;
 }
 
@@ -1255,4 +1263,31 @@ int bake_create_raw_target(const char* path, size_t size)
 
     free(backend_type);
     return (ret);
+}
+
+int bake_provider_set_param(bake_provider_t provider,
+                            const char*     key,
+                            const char*     value)
+{
+    int bool_val = 0;
+
+    if (strcmp(key, "pipeline_enable") == 0) {
+        BAKE_TRACE(provider->mid, "Setting %s to %s", key, value);
+        if (strcmp(value, "true") == 0 || strcmp(value, "1") == 0)
+            bool_val = 1;
+        else if (strcmp(value, "false") == 0 || strcmp(value, "0") == 0)
+            bool_val = 0;
+        else
+            return (BAKE_ERR_INVALID_ARG);
+
+        CONFIG_OVERRIDE_BOOL(provider->json_cfg, key, bool_val,
+                             "pipeline_enable", 0);
+        setup_poolset(provider);
+        return (0);
+    }
+
+    /* by default return invalid arg; we must whitelist paramters that are
+     * valid to modify at runtime, because there are some that cannot be
+     */
+    return (BAKE_ERR_INVALID_ARG);
 }
