@@ -23,6 +23,7 @@ struct options {
     unsigned     num_pools;
     char**       bake_pools;
     char*        host_file;
+    char*        json_file;
     int          pipeline_enabled;
     mplex_mode_t mplex_mode;
 };
@@ -37,10 +38,16 @@ static void usage(int argc, char** argv)
     fprintf(stderr,
             "           (prepend pmem: or file: to specify backend format)\n");
     fprintf(stderr,
+            "           (pools may be omitted if they are specified in json "
+            "file)\n");
+    fprintf(stderr,
             "       [-f filename] to write the server address to a file\n");
     fprintf(stderr,
             "       [-m mode] multiplexing mode (providers or targets) for "
             "managing multiple pools (default is targets)\n");
+    fprintf(stderr,
+            "       [-j json_file] name of file containing bake provider json "
+            "paramters\n");
     fprintf(stderr, "       [-p] enable pipelining\n");
     fprintf(stderr,
             "Example: ./bake-server-daemon tcp://localhost:1234 "
@@ -55,10 +62,13 @@ static void parse_args(int argc, char** argv, struct options* opts)
     memset(opts, 0, sizeof(*opts));
 
     /* get options */
-    while ((opt = getopt(argc, argv, "f:m:p")) != -1) {
+    while ((opt = getopt(argc, argv, "f:m:pj:")) != -1) {
         switch (opt) {
         case 'f':
             opts->host_file = optarg;
+            break;
+        case 'j':
+            opts->json_file = optarg;
             break;
         case 'm':
             if (0 == strcmp(optarg, "targets"))
@@ -81,7 +91,7 @@ static void parse_args(int argc, char** argv, struct options* opts)
     }
 
     /* get required arguments after options */
-    if ((argc - optind) < 2) {
+    if ((argc - optind) < 2 && !opts->json_file) {
         usage(argc, argv);
         exit(EXIT_FAILURE);
     }
@@ -103,6 +113,7 @@ int main(int argc, char** argv)
     int               ret;
     char*             show_conf = NULL;
     bake_provider_t   provider;
+    char*             json_string = NULL;
 
     parse_args(argc, argv, &opts);
 
@@ -116,6 +127,22 @@ int main(int argc, char** argv)
     }
 
     margo_enable_remote_shutdown(mid);
+
+    if (opts.json_file) {
+        FILE* f = fopen(opts.json_file, "r");
+        if (!f) {
+            perror("fopen");
+            fprintf(stderr, "\tCould not open json file \"%s\"\n",
+                    opts.json_file);
+            exit(EXIT_FAILURE);
+        }
+        fseek(f, 0, SEEK_END);
+        long fsize = ftell(f);
+        fseek(f, 0, SEEK_SET);
+        json_string = calloc(fsize + 1, 1);
+        fread(json_string, 1, fsize, f);
+        fclose(f);
+    }
 
     if (opts.host_file) {
         /* write the server address to file if requested */
@@ -162,6 +189,7 @@ int main(int argc, char** argv)
         for (i = 0; i < opts.num_pools; i++) {
             bake_target_id_t               tid;
             struct bake_provider_init_info bpargs = {0};
+            bpargs.json_config                    = json_string;
 
             ret = bake_provider_register(mid, i + 1, &bpargs, &provider);
             if (ret != 0) {
@@ -200,6 +228,7 @@ int main(int argc, char** argv)
 
         int                            i;
         struct bake_provider_init_info bpargs = {0};
+        bpargs.json_config                    = json_string;
 
         ret = bake_provider_register(mid, 1, &bpargs, &provider);
         if (ret != 0) {
