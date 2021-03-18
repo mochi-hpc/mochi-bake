@@ -164,6 +164,18 @@ int bake_provider_list_targets(bake_provider_t   provider,
                                bake_target_id_t* targets);
 
 /**
+ * Sets configuration parameters
+ *
+ * @param [in] provider Bake provider
+ * @param [in] key parameter name
+ * @param [in] value parameter value
+ *
+ * @returns 0 on success, -1 on failure
+ */
+int bake_provider_set_param(bake_provider_t provider,
+                            const char*     key,
+                            const char*     value);
+/**
  * Retrieves complete configuration of bake provider, encoded as json
  *
  * @param [in] provider bake provider

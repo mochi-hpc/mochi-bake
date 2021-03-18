@@ -99,4 +99,25 @@ static const int json_type_int64 = json_type_int;
         json_object_object_add(__config, __key, _tmp);                       \
     } while (0)
 
+// Overrides a field with a boolean. If the field already existed and was
+// different from the new value, and __warning is true, prints a warning.
+#define CONFIG_OVERRIDE_BOOL(__config, __key, __value, __field_name,         \
+                             __warning)                                      \
+    do {                                                                     \
+        struct json_object* _tmp = json_object_object_get(__config, __key);  \
+        if (_tmp && __warning) {                                             \
+            if (!json_object_is_type(_tmp, json_type_boolean))               \
+                BAKE_WARNING(0, "Overriding field \"%s\" with value \"%s\"", \
+                             __field_name, __value ? "true" : "false");      \
+            else if (json_object_get_boolean(_tmp) != !!__value)             \
+                BAKE_WARNING(                                                \
+                    0, "Overriding field \"%s\" (\"%s\") with value \"%s\"", \
+                    __field_name,                                            \
+                    json_object_get_boolean(_tmp) ? "true" : "false",        \
+                    __value ? "true" : "false");                             \
+        }                                                                    \
+        json_object_object_add(__config, __key,                              \
+                               json_object_new_boolean(__value));            \
+    } while (0)
+
 #endif /* __BAKE_MACROS */

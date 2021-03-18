@@ -1,0 +1,15 @@
+{
+  "version":"0.6.1",
+  "pipeline_enable":true,
+  "pipeline_npools":4,
+  "pipeline_nbuffers_per_pool":32,
+  "pipeline_first_buffer_size":65536,
+  "pipeline_multiplier":4,
+  "file_backend":{
+    "targets":[
+      "file.dat"
+    ],
+    "alignment":4096,
+    "abtio_nthreads":16
+  }
+}
