@@ -7,9 +7,10 @@
   "pipeline_multiplier":4,
   "file_backend":{
     "targets":[
-      "file.dat"
+      "/dev/shm/file.dat"
     ],
-    "sync":false,
+    "directio":true,
+    "sync":true,
     "alignment":4096,
     "abtio_nthreads":16
   }
