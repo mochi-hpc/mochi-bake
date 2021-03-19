@@ -68,8 +68,7 @@ typedef struct {
                                    creation */
     abt_io_instance_id abtioi;  /* abt-io instance used by this provider */
     bake_root_t*       file_root;
-    char*              root;
-    char*              filename;
+    char*              path;
 } bake_file_entry_t;
 
 typedef struct xfer_args {
@@ -118,14 +117,26 @@ static int bake_file_makepool(const char* file_name, size_t file_size)
     int          fd = -1;
     bake_root_t* root;
     int          ret;
-    int          oflags = O_EXCL | O_WRONLY | O_CREAT;
+    int          oflags        = O_EXCL | O_WRONLY | O_CREAT;
+    char         log_name[256] = {0};
+
+    /* file targets are actually subdirectories (which may have multiple log
+     * files within them
+     */
+    ret = mkdir(file_name, 0755);
+    if (ret < 0) {
+        perror("mkdir");
+        return (BAKE_ERR_IO);
+    }
+
+    snprintf(log_name, 256, "%s/log.%d", file_name, 0);
 
     /* NOTE: we do not use O_DIRECT here.  This fn is just creating the log and
      * is not performance sensitive.  Note that one side effect of this,
      * however, is that we won't be able to confirm if O_DIRECT is supported
      * on this storage device until the provider attaches the target.
      */
-    fd = open(file_name, oflags, 0644);
+    fd = open(log_name, oflags, 0644);
     if (fd < 0) {
         perror("open");
         return (BAKE_ERR_IO);
@@ -165,13 +176,12 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
     bake_file_entry_t* new_entry = calloc(1, sizeof(*new_entry));
     new_entry->provider          = provider;
     new_entry->log_fd            = -1;
-    const char*         tmp;
-    ptrdiff_t           d;
     struct stat         statbuf;
     struct json_object* file_backend_json = NULL;
     struct json_object* target_array      = NULL;
     struct json_object* val;
-    int                 oflags = O_RDWR;
+    int                 oflags        = O_RDWR;
+    char                log_name[256] = {0};
 
     if (!json_object_get_boolean(
             json_object_object_get(provider->json_cfg, "pipeline_enable"))) {
@@ -224,11 +234,7 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
         }
     }
 
-    tmp = strrchr(path, '/');
-    if (!tmp) tmp = path;
-    new_entry->filename = strdup(tmp);
-    d                   = tmp - path;
-    new_entry->root     = strndup(path, d);
+    new_entry->path = strdup(path);
 
     new_entry->sync = json_object_get_boolean(
         json_object_object_get(file_backend_json, "sync"));
@@ -239,12 +245,13 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
         oflags |= O_DIRECT;
     }
 
-    new_entry->log_fd = abt_io_open(new_entry->abtioi, path, oflags, 0);
+    snprintf(log_name, 256, "%s/log.%d", path, 0);
+    new_entry->log_fd = abt_io_open(new_entry->abtioi, log_name, oflags, 0);
     if ((new_entry->log_fd == -EINVAL) && (oflags & O_DIRECT)) {
         /* It looks like we may have failed to open the log because of
          * directio.  Try falling back without it */
         oflags &= ~O_DIRECT;
-        new_entry->log_fd = abt_io_open(new_entry->abtioi, path, oflags, 0);
+        new_entry->log_fd = abt_io_open(new_entry->abtioi, log_name, oflags, 0);
         if (new_entry->log_fd >= 0) {
             /* The user requested directio, but we are proceeding without
              * it.  Issue a warning and update runtime json.
@@ -260,7 +267,7 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
 
     if (new_entry->log_fd < 0) {
         BAKE_ERROR(provider->mid, "open(): %s on %s",
-                   strerror(-new_entry->log_fd), path);
+                   strerror(-new_entry->log_fd), log_name);
         ret = BAKE_ERR_NOENT;
         goto error_cleanup;
     }
@@ -339,8 +346,7 @@ error_cleanup:
         if (new_entry->log_fd > -1) close(new_entry->log_fd);
         if (new_entry->abtioi && new_entry->abtioi != provider->aid)
             abt_io_finalize(new_entry->abtioi);
-        if (new_entry->filename) free(new_entry->filename);
-        if (new_entry->root) free(new_entry->root);
+        if (new_entry->path) free(new_entry->path);
         free(new_entry);
     }
     return (ret);
@@ -354,8 +360,7 @@ static int bake_file_backend_finalize(backend_context_t context)
     close(entry->log_fd);
     if (entry->abtioi && entry->abtioi != entry->provider->aid)
         abt_io_finalize(entry->abtioi);
-    free(entry->filename);
-    free(entry->root);
+    free(entry->path);
     free(entry);
 
     return BAKE_SUCCESS;
@@ -683,15 +688,19 @@ static int bake_file_create_fileset(backend_context_t context,
 {
     bake_file_entry_t* entry = (bake_file_entry_t*)context;
     int                ret;
+    char               log_name[256] = {0};
+
     /* create a fileset */
-    ret = remi_fileset_create("bake", entry->root, fileset);
+    ret = remi_fileset_create("bake", entry->path, fileset);
     if (ret != REMI_SUCCESS) {
         ret = BAKE_ERR_REMI;
         goto error;
     }
 
     /* fill the fileset */
-    ret = remi_fileset_register_file(*fileset, entry->filename);
+    /* note that log name does not include directory path here */
+    snprintf(log_name, 256, "log.%d", path, 0);
+    ret = remi_fileset_register_file(*fileset, log_name);
     if (ret != REMI_SUCCESS) {
         ret = BAKE_ERR_REMI;
         goto error;
