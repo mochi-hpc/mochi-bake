@@ -63,6 +63,7 @@ typedef struct {
     int             log_fd;        /* file descriptor for log */
     off_t           log_offset;    /* next available unused offset in log */
     int             log_alignment; /* alignment for log access */
+    int             sync;          /* flag indicating whether to sync or not */
     ABT_mutex log_offset_mutex; /* protects the above during concurrent region
                                    creation */
     abt_io_instance_id abtioi;  /* abt-io instance used by this provider */
@@ -189,6 +190,10 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
     /* alignment */
     CONFIG_HAS_OR_CREATE(file_backend_json, int64, "alignment", 4096,
                          "file_backend.alignment", val);
+    /* will the target be synchronized for durability (particularly when
+     * persist() is called on a region)? */
+    CONFIG_HAS_OR_CREATE(file_backend_json, boolean, "sync", 1,
+                         "file_backend.sync", val);
 
     /* you can't pass in an existing abt-io instance _and_ request one with
      * a particular thread count.
@@ -279,6 +284,12 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
         goto error_cleanup;
     }
 
+    /* retrieve sync flag so we don't have to repeatedly consult json in I/O
+     * path
+     */
+    new_entry->sync = json_object_get_boolean(
+        json_object_object_get(file_backend_json, "sync"));
+
     /* target successfully added; inject it into the json in array of
      * targets for this backend
      */
@@ -364,10 +375,12 @@ bake_file_create(backend_context_t context, size_t size, bake_region_id_t* rid)
         return (BAKE_ERR_IO);
     }
 
-    ret = abt_io_fdatasync(entry->abtioi, entry->log_fd);
-    if (ret != 0) {
-        free(zero_block);
-        return (BAKE_ERR_IO);
+    if (entry->sync) {
+        ret = abt_io_fdatasync(entry->abtioi, entry->log_fd);
+        if (ret != 0) {
+            free(zero_block);
+            return (BAKE_ERR_IO);
+        }
     }
 
     free(zero_block);
@@ -567,12 +580,14 @@ static int bake_file_persist(backend_context_t context,
     bake_file_entry_t* entry = (bake_file_entry_t*)context;
     int                ret;
 
-    /* NOTE: the size and offset doesn't matter.  There isn't any reasonably
-     * portable function that can be used to sync portion of a log; we have
-     * to sync the whole thing.
-     */
-    ret = abt_io_fdatasync(entry->abtioi, entry->log_fd);
-    if (ret != 0) return (BAKE_ERR_IO);
+    if (entry->sync) {
+        /* NOTE: the size and offset doesn't matter.  There isn't any reasonably
+         * portable function that can be used to sync portion of a log; we have
+         * to sync the whole thing.
+         */
+        ret = abt_io_fdatasync(entry->abtioi, entry->log_fd);
+        if (ret != 0) return (BAKE_ERR_IO);
+    }
 
     return BAKE_SUCCESS;
 }
