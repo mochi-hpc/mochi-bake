@@ -9,6 +9,7 @@
     "targets":[
       "file.dat"
     ],
+    "sync":false,
     "alignment":4096,
     "abtio_nthreads":16
   }
