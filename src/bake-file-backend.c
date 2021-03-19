@@ -118,15 +118,16 @@ static int bake_file_makepool(const char* file_name, size_t file_size)
     int          fd = -1;
     bake_root_t* root;
     int          ret;
+    int          oflags = O_EXCL | O_WRONLY | O_CREAT;
 
-    fd = open(file_name, O_EXCL | O_WRONLY | O_CREAT | O_DIRECT, 0644);
+    /* NOTE: we do not use O_DIRECT here.  This fn is just creating the log and
+     * is not performance sensitive.  Note that one side effect of this,
+     * however, is that we won't be able to confirm if O_DIRECT is supported
+     * on this storage device until the provider attaches the target.
+     */
+    fd = open(file_name, oflags, 0644);
     if (fd < 0) {
-        int save_errno = errno;
         perror("open");
-        if (save_errno == EINVAL)
-            fprintf(stderr,
-                    "... does your file system support O_DIRECT? tmpfs does "
-                    "not.\n");
         return (BAKE_ERR_IO);
     }
 
@@ -170,6 +171,7 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
     struct json_object* file_backend_json = NULL;
     struct json_object* target_array      = NULL;
     struct json_object* val;
+    int                 oflags = O_RDWR;
 
     if (!json_object_get_boolean(
             json_object_object_get(provider->json_cfg, "pipeline_enable"))) {
@@ -194,6 +196,9 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
      * persist() is called on a region)? */
     CONFIG_HAS_OR_CREATE(file_backend_json, boolean, "sync", 1,
                          "file_backend.sync", val);
+    /* use directio? */
+    CONFIG_HAS_OR_CREATE(file_backend_json, boolean, "directio", 1,
+                         "file_backend.directio", val);
 
     /* you can't pass in an existing abt-io instance _and_ request one with
      * a particular thread count.
@@ -225,8 +230,34 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
     d                   = tmp - path;
     new_entry->root     = strndup(path, d);
 
-    new_entry->log_fd
-        = abt_io_open(new_entry->abtioi, path, O_RDWR | O_DIRECT, 0);
+    new_entry->sync = json_object_get_boolean(
+        json_object_object_get(file_backend_json, "sync"));
+
+    if (json_object_get_boolean(
+            json_object_object_get(file_backend_json, "directio"))) {
+        BAKE_DEBUG(provider->mid, "adding O_DIRECT to flags");
+        oflags |= O_DIRECT;
+    }
+
+    new_entry->log_fd = abt_io_open(new_entry->abtioi, path, oflags, 0);
+    if ((new_entry->log_fd == -EINVAL) && (oflags & O_DIRECT)) {
+        /* It looks like we may have failed to open the log because of
+         * directio.  Try falling back without it */
+        oflags &= ~O_DIRECT;
+        new_entry->log_fd = abt_io_open(new_entry->abtioi, path, oflags, 0);
+        if (new_entry->log_fd >= 0) {
+            /* The user requested directio, but we are proceeding without
+             * it.  Issue a warning and update runtime json.
+             */
+            json_object_set_boolean(
+                json_object_object_get(file_backend_json, "directio"), 0);
+            BAKE_WARNING(
+                provider->mid,
+                "O_DIRECT not supported on target %s; disabling directio",
+                path);
+        }
+    }
+
     if (new_entry->log_fd < 0) {
         BAKE_ERROR(provider->mid, "open(): %s on %s",
                    strerror(-new_entry->log_fd), path);
