@@ -429,6 +429,14 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
     srand(time(NULL));
     new_entry->next_log_idx = rand() % new_entry->file_root->nlogs;
 
+    /* save superblock updates */
+    ret = abt_io_pwrite(new_entry->abtioi, root_fd, new_entry->file_root,
+                        BAKE_SUPERBLOCK_SIZE, 0);
+    if (ret < 0) {
+        ret = BAKE_ERR_IO;
+        goto error_cleanup;
+    }
+
     /* target successfully added; inject it into the json in array of
      * targets for this backend
      */
