@@ -634,7 +634,7 @@ static int bake_file_write_bulk(backend_context_t context,
 }
 
 /* utility function used to free bounce buffers created by
- * bake_file_read_raw().  It is like a normal fre() except that it must
+ * bake_file_read_raw().  It is like a normal free() except that it must
  * round down to block alignment to find the correct pointer to free.
  */
 static void bake_file_read_raw_free(backend_context_t context, void* ptr)
