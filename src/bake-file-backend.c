@@ -47,7 +47,7 @@
 typedef struct {
     bake_target_id_t pool_id;
     uint32_t         nlogs;
-    uint32_t         alignment;
+    uint64_t         alignment;
     /* NOTE: trailing data in the superblock after the above struct is an array
      * of offsets for the current log position in each log.
      */
