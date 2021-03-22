@@ -122,8 +122,8 @@ int main(int argc, char** argv)
     mid = margo_init(opts.listen_addr_str, MARGO_SERVER_MODE, 0, -1);
     if (mid == MARGO_INSTANCE_NULL) {
         fprintf(stderr, "Error: margo_init()\n");
-        free(opts.bake_pools);
-        return (-1);
+        ret = -1;
+        goto error;
     }
 
     margo_enable_remote_shutdown(mid);
@@ -134,7 +134,8 @@ int main(int argc, char** argv)
             perror("fopen");
             fprintf(stderr, "\tCould not open json file \"%s\"\n",
                     opts.json_file);
-            exit(EXIT_FAILURE);
+            ret = -1;
+            goto error;
         }
         fseek(f, 0, SEEK_END);
         long fsize = ftell(f);
@@ -147,7 +148,7 @@ int main(int argc, char** argv)
     if (opts.host_file) {
         /* write the server address to file if requested */
         FILE*       fp;
-        hg_addr_t   self_addr;
+        hg_addr_t   self_addr = HG_ADDR_NULL;
         char        self_addr_str[128];
         hg_size_t   self_addr_str_sz = 128;
         hg_return_t hret;
@@ -156,18 +157,16 @@ int main(int argc, char** argv)
         hret = margo_addr_self(mid, &self_addr);
         if (hret != HG_SUCCESS) {
             fprintf(stderr, "Error: margo_addr_self()\n");
-            free(opts.bake_pools);
-            margo_finalize(mid);
-            return (-1);
+            ret = -1;
+            goto error;
         }
         hret = margo_addr_to_string(mid, self_addr_str, &self_addr_str_sz,
                                     self_addr);
         if (hret != HG_SUCCESS) {
             fprintf(stderr, "Error: margo_addr_to_string()\n");
-            free(opts.bake_pools);
             margo_addr_free(mid, self_addr);
-            margo_finalize(mid);
-            return (-1);
+            ret = -1;
+            goto error;
         }
         margo_addr_free(mid, self_addr);
 
@@ -175,8 +174,8 @@ int main(int argc, char** argv)
         if (!fp) {
             free(opts.bake_pools);
             perror("fopen");
-            margo_finalize(mid);
-            return (-1);
+            ret = -1;
+            goto error;
         }
 
         fprintf(fp, "%s", self_addr_str);
@@ -194,9 +193,8 @@ int main(int argc, char** argv)
             ret = bake_provider_register(mid, i + 1, &bpargs, &provider);
             if (ret != 0) {
                 bake_perror("Error: bake_provider_register()", ret);
-                free(opts.bake_pools);
-                margo_finalize(mid);
-                return (-1);
+                ret = -1;
+                goto error;
             }
 
             if (opts.pipeline_enabled) {
@@ -204,9 +202,8 @@ int main(int argc, char** argv)
                                               "true");
                 if (ret != 0) {
                     bake_perror("Error: bake_provider_set_param()", ret);
-                    free(opts.bake_pools);
-                    margo_finalize(mid);
-                    return (-1);
+                    ret = -1;
+                    goto error;
                 }
             }
 
@@ -215,9 +212,8 @@ int main(int argc, char** argv)
 
             if (ret != 0) {
                 bake_perror("Error: bake_provider_attach_target()", ret);
-                free(opts.bake_pools);
-                margo_finalize(mid);
-                return (-1);
+                ret = -1;
+                goto error;
             }
 
             printf("Provider %d managing new target at multiplex id %d\n", i,
@@ -233,18 +229,16 @@ int main(int argc, char** argv)
         ret = bake_provider_register(mid, 1, &bpargs, &provider);
         if (ret != 0) {
             bake_perror("Error: bake_provider_register()", ret);
-            free(opts.bake_pools);
-            margo_finalize(mid);
-            return (-1);
+            ret = -1;
+            goto error;
         }
 
         if (opts.pipeline_enabled) {
             ret = bake_provider_set_param(provider, "pipeline_enable", "true");
             if (ret != 0) {
                 bake_perror("Error: bake_provider_set_param()", ret);
-                free(opts.bake_pools);
-                margo_finalize(mid);
-                return (-1);
+                ret = -1;
+                goto error;
             }
         }
 
@@ -255,9 +249,8 @@ int main(int argc, char** argv)
 
             if (ret != 0) {
                 bake_perror("Error: bake_provider_attach_target()", ret);
-                free(opts.bake_pools);
-                margo_finalize(mid);
-                return (-1);
+                ret = -1;
+                goto error;
             }
 
             printf("Provider 0 managing new target at multiplex id %d\n", 1);
@@ -273,7 +266,15 @@ int main(int argc, char** argv)
     /* suspend until the BAKE server gets a shutdown signal from the client */
     margo_wait_for_finalize(mid);
 
-    free(opts.bake_pools);
-
+    if (opts.bake_pools) free(opts.bake_pools);
+    if (json_string) free(json_string);
     return (0);
+
+error:
+
+    if (mid) margo_finalize(mid);
+    if (opts.bake_pools) free(opts.bake_pools);
+    if (json_string) free(json_string);
+
+    return (ret);
 }
