@@ -474,6 +474,8 @@ static int bake_file_backend_finalize(backend_context_t context)
     bake_file_entry_t* entry = (bake_file_entry_t*)context;
     int                i;
 
+    BAKE_INFO(entry->provider->mid, "Bake file backend finalizing");
+
     free(entry->file_root);
     if (entry->abtioi && entry->abtioi != entry->provider->aid)
         abt_io_finalize(entry->abtioi);

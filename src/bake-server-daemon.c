@@ -126,6 +126,7 @@ int main(int argc, char** argv)
         goto error;
     }
 
+    margo_set_log_level(mid, MARGO_LOG_INFO);
     margo_enable_remote_shutdown(mid);
 
     if (opts.json_file) {
