@@ -476,12 +476,12 @@ static int bake_file_backend_finalize(backend_context_t context)
 
     BAKE_INFO(entry->provider->mid, "Bake file backend finalizing");
 
+    for (i = 0; i < entry->file_root->nlogs; i++) { close(entry->log_fds[i]); }
+    free(entry->log_fds);
     free(entry->file_root);
     if (entry->abtioi && entry->abtioi != entry->provider->aid)
         abt_io_finalize(entry->abtioi);
     free(entry->path);
-    for (i = 0; i < entry->file_root->nlogs; i++) { close(entry->log_fds[i]); }
-    free(entry->log_fds);
 
     free(entry);
 
