@@ -404,7 +404,7 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
 
     /* open logs */
     for (i = 0; i < new_entry->file_root->nlogs; i++) {
-        snprintf(log_name, 256, "%s/log.%d", path, 0);
+        snprintf(log_name, 256, "%s/log.%d", path, i);
         new_entry->log_fds[i]
             = abt_io_open(new_entry->abtioi, log_name, oflags | O_CREAT, 0644);
         if (new_entry->log_fds < 0) {
@@ -813,6 +813,7 @@ static int bake_file_create_fileset(backend_context_t context,
     bake_file_entry_t* entry = (bake_file_entry_t*)context;
     int                ret;
     char               log_name[256] = {0};
+    int                i;
 
     /* create a fileset */
     ret = remi_fileset_create("bake", entry->path, fileset);
@@ -822,12 +823,21 @@ static int bake_file_create_fileset(backend_context_t context,
     }
 
     /* fill the fileset */
-    /* note that log name does not include directory path here */
-    snprintf(log_name, 256, "log.%d", path, 0);
-    ret = remi_fileset_register_file(*fileset, log_name);
+    /* superblock first */
+    ret = remi_fileset_register_file(*fileset, "bake-file-root");
     if (ret != REMI_SUCCESS) {
         ret = BAKE_ERR_REMI;
         goto error;
+    }
+    /* all logs */
+    for (i = 0; i < entry->file_root->nlogs; i++) {
+        /* note that log name does not include directory path here */
+        snprintf(log_name, 256, "log.%d", i);
+        ret = remi_fileset_register_file(*fileset, log_name);
+        if (ret != REMI_SUCCESS) {
+            ret = BAKE_ERR_REMI;
+            goto error;
+        }
     }
 
 finish:
