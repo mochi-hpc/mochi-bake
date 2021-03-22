@@ -50,8 +50,9 @@ typedef struct {
 
 /* definition of internal BAKE region_id_t identifier for file back end */
 typedef struct {
-    off_t  log_entry_offset;
-    size_t log_entry_size;
+    off_t   log_entry_offset;
+    size_t  log_entry_size;
+    int32_t log_index; /* which log if multiple are present? */
 } file_region_id_t;
 
 typedef struct {
@@ -380,6 +381,7 @@ bake_file_create(backend_context_t context, size_t size, bake_region_id_t* rid)
     /* round up size for directio alignment */
     size = BAKE_ALIGN_UP(size, entry->log_alignment);
 
+    frid->log_index      = 0;
     frid->log_entry_size = size;
     ABT_mutex_lock(entry->log_offset_mutex);
     frid->log_entry_offset = entry->log_offset;
