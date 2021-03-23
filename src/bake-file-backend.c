@@ -482,6 +482,7 @@ static int bake_file_backend_finalize(backend_context_t context)
     if (entry->abtioi && entry->abtioi != entry->provider->aid)
         abt_io_finalize(entry->abtioi);
     free(entry->path);
+    ABT_mutex_free(&entry->file_root_mutex);
 
     free(entry);
 
