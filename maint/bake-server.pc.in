@@ -7,6 +7,6 @@ Name: bake-server
 Description: bulk data access service, server side
 Version: 0.3.4
 URL: https://xgitlab.cels.anl.gov/sds/bake
-Requires: margo uuid libpmemobj @REMI_PKG@
+Requires: margo uuid libpmemobj abt-io @REMI_PKG@
 Libs: -L${libdir} -lbake-server
 Cflags: -I${includedir}
