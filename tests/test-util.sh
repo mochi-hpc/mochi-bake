@@ -77,16 +77,11 @@ function test_start_servers_multi_providers ()
     do
 	for j in `seq $nproviders`
 	do
-            src/bake-mkpool -s 100M ${backend}$TMPBASE/svr-$i-prvd-$j.dat
+            src/bake-mkpool -s 100M ${backend}${TMPBASE}/svr-$i-prvd-$j.dat
             if [ $? -ne 0 ]; then
                 exit 1
             fi
-        done
-
-        targets=
-        datfiles=`ls $TMPBASE/svr-$i-prvd-*.dat`
-        for dat in ${datfiles[@]}; do
-            targets+=( "${backend}${dat}" )
+            targets+=( "${backend}${TMPBASE}/svr-$i-prvd-$j.dat" )
         done
 
         run_to ${maxtime} src/bake-server-daemon -p -m providers -f $TMPBASE/svr-$i.addr na+sm ${targets[@]} &
@@ -118,16 +113,11 @@ function test_start_servers_multi_targets ()
     do
 	for j in `seq $ntargets`
 	do
-    	    src/bake-mkpool -s 100M $TMPBASE/svr-$i-tgt-$j.dat
+            src/bake-mkpool -s 100M ${backend}${TMPBASE}/svr-$i-tgt-$j.dat
             if [ $? -ne 0 ]; then
                 exit 1
             fi
-        done
-
-        targets=
-        datfiles=`ls $TMPBASE/svr-$i-tgt-*.dat`
-        for dat in ${datfiles[@]}; do
-            targets+=( "${backend}${dat}" )
+            targets+=( "${backend}${TMPBASE}/svr-$i-tgt-$j.dat" )
         done
 
         run_to ${maxtime} src/bake-server-daemon -p -m targets -f $TMPBASE/svr-$i.addr na+sm ${targets[@]} &

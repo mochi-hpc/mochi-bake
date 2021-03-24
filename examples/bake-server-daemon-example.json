@@ -7,7 +7,7 @@
   "pipeline_multiplier":4,
   "file_backend":{
     "targets":[
-      "/dev/shm/file.dat"
+      "/dev/shm/file-target1"
     ],
     "directio":true,
     "sync":true,
