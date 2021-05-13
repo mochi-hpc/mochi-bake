@@ -1,7 +1,7 @@
 spack:
   specs:
   - mochi-margo
-  - mochi-bedrock@master
+  - mochi-bedrock
   - libuuid
   - mochi-abt-io
   - autoconf

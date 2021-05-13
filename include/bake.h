@@ -7,7 +7,7 @@
 #ifndef __BAKE_H
 #define __BAKE_H
 
-#include <uuid/uuid.h>
+#include <uuid.h>
 #include <stdint.h>
 
 #ifdef __cplusplus

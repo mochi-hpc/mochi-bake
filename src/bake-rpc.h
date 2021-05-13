@@ -7,7 +7,7 @@
 #ifndef __BAKE_RPC
 #define __BAKE_RPC
 
-#include <uuid/uuid.h>
+#include <uuid.h>
 #include <margo.h>
 #include <mercury_proc_string.h>
 #include <bake.h>
