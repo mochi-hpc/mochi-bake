@@ -7,6 +7,6 @@ Name: bake-client
 Description: bulk data access service, client side
 Version: 0.3.4
 URL: https://xgitlab.cels.anl.gov/sds/bake
-Requires: margo
+Requires: margo uuid
 Libs: -L${libdir} -lbake-client
 Cflags: -I${includedir}
