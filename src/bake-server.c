@@ -1000,6 +1000,8 @@ static void bake_server_finalize_cb(void* data)
 
     bake_provider_detach_all_targets(provider);
 
+    if (provider->poolset) margo_bulk_poolset_destroy(provider->poolset);
+
     json_object_put(provider->json_cfg);
 
     ABT_rwlock_free(&(provider->lock));

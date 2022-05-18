@@ -43,15 +43,22 @@
 #define TRANSFER_DATA_READ  1
 #define TRANSFER_DATA_WRITE 2
 
-/* definition of BAKE root data structure (just a uuid for now) */
+/* definition of BAKE root data structure */
 typedef struct {
     bake_target_id_t pool_id;
+    uint32_t         nlogs;
+    uint64_t         alignment;
+    /* NOTE: trailing data in the superblock after the above struct is an array
+     * of offsets for the current log position in each log.
+     */
+    off_t log_offsets[1];
 } bake_root_t;
 
 /* definition of internal BAKE region_id_t identifier for file back end */
 typedef struct {
-    off_t  log_entry_offset;
-    size_t log_entry_size;
+    off_t    log_entry_offset;
+    size_t   log_entry_size;
+    uint32_t log_index; /* which log if multiple are present */
 } file_region_id_t;
 
 typedef struct {
@@ -59,17 +66,15 @@ typedef struct {
 } region_content_t;
 
 typedef struct {
-    bake_provider_t provider;
-    int             log_fd;        /* file descriptor for log */
-    off_t           log_offset;    /* next available unused offset in log */
-    int             log_alignment; /* alignment for log access */
-    int             sync;          /* flag indicating whether to sync or not */
-    ABT_mutex log_offset_mutex; /* protects the above during concurrent region
-                                   creation */
-    abt_io_instance_id abtioi;  /* abt-io instance used by this provider */
+    bake_provider_t    provider;
+    int*               log_fds;      /* file descriptor for log */
+    int                next_log_idx; /* next log to allocate from */
+    int                sync;   /* flag indicating whether to sync or not */
+    abt_io_instance_id abtioi; /* abt-io instance used by this provider */
     bake_root_t*       file_root;
-    char*              root;
-    char*              filename;
+    ABT_mutex
+        file_root_mutex; /* protects the above during concurrent meta updates */
+    char* path;
 } bake_file_entry_t;
 
 typedef struct xfer_args {
@@ -82,6 +87,7 @@ typedef struct xfer_args {
     size_t    remote_offset; /* remote offset at which to take the data */
 
     /* state of region to be accessed in local log */
+    int    fd;
     off_t  log_entry_offset; /* log extent to access */
     size_t log_entry_size;   /* log extent to access */
     size_t log_issued;       /* log accesses issued (bytes) */
@@ -101,7 +107,10 @@ typedef struct xfer_args {
     int          op_flag;     /* read or write */
 } xfer_args;
 
+static int validate_and_complete_config(bake_provider_t    provider,
+                                        bake_file_entry_t* new_entry);
 static int transfer_data(bake_file_entry_t* entry,
+                         int                fd,
                          off_t              log_entry_offset,
                          size_t             log_entry_size,
                          uint64_t           region_offset,
@@ -118,14 +127,26 @@ static int bake_file_makepool(const char* file_name, size_t file_size)
     int          fd = -1;
     bake_root_t* root;
     int          ret;
-    int          oflags = O_EXCL | O_WRONLY | O_CREAT;
+    int          oflags         = O_EXCL | O_WRONLY | O_CREAT;
+    char         root_name[256] = {0};
+
+    /* file targets are actually subdirectories (which may have multiple log
+     * files within them
+     */
+    ret = mkdir(file_name, 0755);
+    if (ret < 0) {
+        perror("mkdir");
+        return (BAKE_ERR_IO);
+    }
+
+    snprintf(root_name, 256, "%s/bake-file-root", file_name);
 
     /* NOTE: we do not use O_DIRECT here.  This fn is just creating the log and
      * is not performance sensitive.  Note that one side effect of this,
      * however, is that we won't be able to confirm if O_DIRECT is supported
      * on this storage device until the provider attaches the target.
      */
-    fd = open(file_name, oflags, 0644);
+    fd = open(root_name, oflags, 0644);
     if (fd < 0) {
         perror("open");
         return (BAKE_ERR_IO);
@@ -141,6 +162,11 @@ static int bake_file_makepool(const char* file_name, size_t file_size)
 
     /* store the target id for this bake pool at the root */
     uuid_generate(root->pool_id.id);
+    /* the final alignment and nlogs values are not set until the target is
+     * attached for the first time
+     */
+    root->nlogs     = 0;
+    root->alignment = 0;
 
     ret = write(fd, root, BAKE_SUPERBLOCK_SIZE);
     if (ret != BAKE_SUPERBLOCK_SIZE) {
@@ -155,23 +181,14 @@ static int bake_file_makepool(const char* file_name, size_t file_size)
     return BAKE_SUCCESS;
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////
-static int bake_file_backend_initialize(bake_provider_t    provider,
-                                        const char*        path,
-                                        bake_target_id_t*  target,
-                                        backend_context_t* context)
+static int validate_and_complete_config(bake_provider_t    provider,
+                                        bake_file_entry_t* new_entry)
 {
-    int                ret       = BAKE_SUCCESS;
-    bake_file_entry_t* new_entry = calloc(1, sizeof(*new_entry));
-    new_entry->provider          = provider;
-    new_entry->log_fd            = -1;
-    const char*         tmp;
-    ptrdiff_t           d;
-    struct stat         statbuf;
+    int64_t             check_alignment   = 0;
+    int64_t             check_nlogs       = 0;
     struct json_object* file_backend_json = NULL;
     struct json_object* target_array      = NULL;
     struct json_object* val;
-    int                 oflags = O_RDWR;
 
     if (!json_object_get_boolean(
             json_object_object_get(provider->json_cfg, "pipeline_enable"))) {
@@ -187,8 +204,11 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
     CONFIG_HAS_OR_CREATE_ARRAY(file_backend_json, "targets",
                                "file_backend.targets", target_array);
 
-    /* tuning parameters */
+    /* populate tuning parameters */
 
+    /* number of log files (will be validated against the target root later) */
+    CONFIG_HAS_OR_CREATE(file_backend_json, int64, "nlogs", 4,
+                         "file_backend.nlogs", val);
     /* alignment */
     CONFIG_HAS_OR_CREATE(file_backend_json, int64, "alignment", 4096,
                          "file_backend.alignment", val);
@@ -200,6 +220,29 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
     CONFIG_HAS_OR_CREATE(file_backend_json, boolean, "directio", 1,
                          "file_backend.directio", val);
 
+    /* check that values are sane now that json is populated */
+
+    /* log alignment must be non-negative power of 2 */
+    check_alignment = json_object_get_int(
+        json_object_object_get(file_backend_json, "alignment"));
+    if (check_alignment < 0) {
+        BAKE_ERROR(provider->mid, "negative alignment %d", check_alignment);
+        return (BAKE_ERR_INVALID_ARG);
+    }
+    if (!(((unsigned)check_alignment & ((unsigned)check_alignment - 1)) == 0)) {
+        BAKE_ERROR(provider->mid, "alignment %d is not a power of 2 or zero",
+                   check_alignment);
+        return (BAKE_ERR_INVALID_ARG);
+    }
+
+    /* nlogs must be 1 or more */
+    check_nlogs = json_object_get_int(
+        json_object_object_get(file_backend_json, "nlogs"));
+    if (check_nlogs < 1) {
+        BAKE_ERROR(provider->mid, "nlogs %d must be at least 1", check_nlogs);
+        return (BAKE_ERR_INVALID_ARG);
+    }
+
     /* you can't pass in an existing abt-io instance _and_ request one with
      * a particular thread count.
      */
@@ -207,8 +250,7 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
         BAKE_ERROR(provider->mid,
                    "cannot pass in abt-io instance and also specify explicit "
                    "\"abtio_nthreads\" setting in json");
-        ret = BAKE_ERR_INVALID_ARG;
-        goto error_cleanup;
+        return (BAKE_ERR_INVALID_ARG);
     } else if (provider->aid) {
         new_entry->abtioi = provider->aid;
     } else {
@@ -218,34 +260,60 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
         /* initialize an abt-io instance just for this target */
         new_entry->abtioi = abt_io_init(json_object_get_int(
             json_object_object_get(file_backend_json, "abtio_nthreads")));
-        if (!new_entry->abtioi) {
-            ret = BAKE_ERR_IO;
-            goto error_cleanup;
-        }
+        if (!new_entry->abtioi) { return (BAKE_ERR_IO); }
     }
 
-    tmp = strrchr(path, '/');
-    if (!tmp) tmp = path;
-    new_entry->filename = strdup(tmp);
-    d                   = tmp - path;
-    new_entry->root     = strndup(path, d);
+    return (0);
+}
 
+////////////////////////////////////////////////////////////////////////////////////////////
+static int bake_file_backend_initialize(bake_provider_t    provider,
+                                        const char*        path,
+                                        bake_target_id_t*  target,
+                                        backend_context_t* context)
+{
+    int                ret       = BAKE_SUCCESS;
+    bake_file_entry_t* new_entry = calloc(1, sizeof(*new_entry));
+    new_entry->provider          = provider;
+    int                 root_fd  = -1;
+    struct stat         statbuf;
+    struct json_object* file_backend_json = NULL;
+    struct json_object* target_array      = NULL;
+    int                 oflags            = O_RDWR;
+    char                log_name[256]     = {0};
+    char                root_name[256]    = {0};
+    int                 i;
+
+    new_entry->file_root_mutex = ABT_MUTEX_NULL;
+
+    ret = validate_and_complete_config(provider, new_entry);
+    if (ret < 0) goto error_cleanup;
+
+    file_backend_json
+        = json_object_object_get(provider->json_cfg, "file_backend");
+    target_array = json_object_object_get(file_backend_json, "targets");
+
+    /* populate some runtime parameters so we don't have to consult json
+     * within I/O path
+     */
+    new_entry->path = strdup(path);
     new_entry->sync = json_object_get_boolean(
         json_object_object_get(file_backend_json, "sync"));
-
     if (json_object_get_boolean(
             json_object_object_get(file_backend_json, "directio"))) {
         BAKE_DEBUG(provider->mid, "adding O_DIRECT to flags");
         oflags |= O_DIRECT;
     }
+    ABT_mutex_create(&new_entry->file_root_mutex);
 
-    new_entry->log_fd = abt_io_open(new_entry->abtioi, path, oflags, 0);
-    if ((new_entry->log_fd == -EINVAL) && (oflags & O_DIRECT)) {
+    snprintf(root_name, 256, "%s/bake-file-root", path);
+    root_fd = abt_io_open(new_entry->abtioi, root_name, oflags, 0);
+    if ((root_fd == -EINVAL) && (oflags & O_DIRECT)) {
         /* It looks like we may have failed to open the log because of
          * directio.  Try falling back without it */
         oflags &= ~O_DIRECT;
-        new_entry->log_fd = abt_io_open(new_entry->abtioi, path, oflags, 0);
-        if (new_entry->log_fd >= 0) {
+        root_fd = abt_io_open(new_entry->abtioi, root_name, oflags, 0);
+        if (root_fd >= 0) {
             /* The user requested directio, but we are proceeding without
              * it.  Issue a warning and update runtime json.
              */
@@ -258,68 +326,116 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
         }
     }
 
-    if (new_entry->log_fd < 0) {
-        BAKE_ERROR(provider->mid, "open(): %s on %s",
-                   strerror(-new_entry->log_fd), path);
+    if (root_fd < 0) {
+        BAKE_ERROR(provider->mid, "open(): %s on %s", strerror(-root_fd),
+                   root_name);
         ret = BAKE_ERR_NOENT;
         goto error_cleanup;
     }
 
-    /* check size of log to see where to pick up with new entries */
-    /* TODO: abt-io version of this fn */
-    ret = fstat(new_entry->log_fd, &statbuf);
-    if (ret < 0) {
-        perror("fstat");
-        ret = BAKE_ERR_IO;
-        goto error_cleanup;
-    }
-    ABT_mutex_create(&new_entry->log_offset_mutex);
-    new_entry->log_offset = statbuf.st_size;
-
-    /* check to make sure the root is properly set */
+    /* read root superblock */
     ret = posix_memalign((void**)(&new_entry->file_root), BAKE_SUPERBLOCK_SIZE,
                          BAKE_SUPERBLOCK_SIZE);
     if (ret < 0) {
         ret = BAKE_ERR_IO;
         goto error_cleanup;
     }
-    ret = abt_io_pread(new_entry->abtioi, new_entry->log_fd,
-                       new_entry->file_root, BAKE_SUPERBLOCK_SIZE, 0);
+    ret = abt_io_pread(new_entry->abtioi, root_fd, new_entry->file_root,
+                       BAKE_SUPERBLOCK_SIZE, 0);
     if (ret < 0) {
         ret = BAKE_ERR_IO;
         goto error_cleanup;
     }
     *target = new_entry->file_root->pool_id;
 
+    /* check that superblock is valid and that it matches runtime parameters */
     if (uuid_is_null(target->id)) {
         BAKE_ERROR(provider->mid, "pool %s is not properly formatted", path);
         ret = BAKE_ERR_IO;
         goto error_cleanup;
     }
 
-    /* get and check alignment; must be non-negative and must be power of 2 */
-    new_entry->log_alignment = json_object_get_int(
-        json_object_object_get(file_backend_json, "alignment"));
-    if (new_entry->log_alignment < 0) {
-        BAKE_ERROR(provider->mid, "negative alignment %d",
-                   new_entry->log_alignment);
-        ret = BAKE_ERR_INVALID_ARG;
+    /* some parameters are not set until target is attached */
+    if (new_entry->file_root->nlogs == 0)
+        new_entry->file_root->nlogs = json_object_get_int(
+            json_object_object_get(file_backend_json, "nlogs"));
+    if (new_entry->file_root->alignment == 0)
+        new_entry->file_root->alignment = json_object_get_int(
+            json_object_object_get(file_backend_json, "alignment"));
+
+    /* do json and root agree? */
+    if (new_entry->file_root->nlogs
+        != json_object_get_int(
+            json_object_object_get(file_backend_json, "nlogs"))) {
+        BAKE_ERROR(provider->mid,
+                   "pool %s has nlogs set to %d but provider configuration has "
+                   "nlogs set to %d",
+                   path, new_entry->file_root->nlogs,
+                   json_object_get_int(
+                       json_object_object_get(file_backend_json, "nlogs")));
+        ret = BAKE_ERR_IO;
         goto error_cleanup;
     }
-    if (!(((unsigned)new_entry->log_alignment
-           & ((unsigned)new_entry->log_alignment - 1))
-          == 0)) {
-        BAKE_ERROR(provider->mid, "alignment %d is not a power of 2 or zero",
-                   new_entry->log_alignment);
-        ret = BAKE_ERR_INVALID_ARG;
+    if (new_entry->file_root->alignment
+        != json_object_get_int(
+            json_object_object_get(file_backend_json, "alignment"))) {
+        BAKE_ERROR(provider->mid,
+                   "pool %s has alignment set to %d but provider configuration "
+                   "has alignment set to %d",
+                   path, new_entry->file_root->alignment,
+                   json_object_get_int(
+                       json_object_object_get(file_backend_json, "alignment")));
+        ret = BAKE_ERR_IO;
         goto error_cleanup;
     }
 
-    /* retrieve sync flag so we don't have to repeatedly consult json in I/O
-     * path
+    /* Track log offsets using memory in root superblock; will be flushed at
+     * shutdown so that we have persistent record if possible.
      */
-    new_entry->sync = json_object_get_boolean(
-        json_object_object_get(file_backend_json, "sync"));
+    new_entry->log_fds
+        = calloc(new_entry->file_root->nlogs, sizeof(*new_entry->log_fds));
+    if (!new_entry->log_fds) {
+        ret = BAKE_ERR_NOMEM;
+        goto error_cleanup;
+    }
+    for (i = 0; i < new_entry->file_root->nlogs; i++) {
+        new_entry->log_fds[i] = -1;
+    }
+
+    /* open logs */
+    for (i = 0; i < new_entry->file_root->nlogs; i++) {
+        snprintf(log_name, 256, "%s/log.%d", path, i);
+        new_entry->log_fds[i]
+            = abt_io_open(new_entry->abtioi, log_name, oflags | O_CREAT, 0644);
+        if (new_entry->log_fds < 0) {
+            ret = BAKE_ERR_IO;
+            goto error_cleanup;
+        }
+
+        /* TODO: this logic will be replaced; rely on what's in root superblock
+         * first if possible, then fall back to fstat
+         */
+        /* check size of log to see where to pick up with new entries */
+        ret = fstat(new_entry->log_fds[i], &statbuf);
+        if (ret < 0) {
+            perror("fstat");
+            ret = BAKE_ERR_IO;
+            goto error_cleanup;
+        }
+        new_entry->file_root->log_offsets[i] = statbuf.st_size;
+    }
+
+    /* select a random log to use as the next one to allocate from */
+    srand(time(NULL));
+    new_entry->next_log_idx = rand() % new_entry->file_root->nlogs;
+
+    /* save superblock updates */
+    ret = abt_io_pwrite(new_entry->abtioi, root_fd, new_entry->file_root,
+                        BAKE_SUPERBLOCK_SIZE, 0);
+    if (ret < 0) {
+        ret = BAKE_ERR_IO;
+        goto error_cleanup;
+    }
 
     /* target successfully added; inject it into the json in array of
      * targets for this backend
@@ -336,11 +452,17 @@ static int bake_file_backend_initialize(bake_provider_t    provider,
 error_cleanup:
     if (new_entry) {
         if (new_entry->file_root) free(new_entry->file_root);
-        if (new_entry->log_fd > -1) close(new_entry->log_fd);
         if (new_entry->abtioi && new_entry->abtioi != provider->aid)
             abt_io_finalize(new_entry->abtioi);
-        if (new_entry->filename) free(new_entry->filename);
-        if (new_entry->root) free(new_entry->root);
+        if (new_entry->path) free(new_entry->path);
+        if (new_entry->log_fds) {
+            for (i = 0; i < new_entry->file_root->nlogs; i++) {
+                if (new_entry->log_fds[i] > -1) close(new_entry->log_fds[i]);
+            }
+            free(new_entry->log_fds);
+        }
+        if (new_entry->file_root_mutex != ABT_MUTEX_NULL)
+            ABT_mutex_free(&new_entry->file_root_mutex);
         free(new_entry);
     }
     return (ret);
@@ -350,12 +472,18 @@ error_cleanup:
 static int bake_file_backend_finalize(backend_context_t context)
 {
     bake_file_entry_t* entry = (bake_file_entry_t*)context;
+    int                i;
+
+    BAKE_INFO(entry->provider->mid, "Bake file backend finalizing");
+
+    for (i = 0; i < entry->file_root->nlogs; i++) { close(entry->log_fds[i]); }
+    free(entry->log_fds);
     free(entry->file_root);
-    close(entry->log_fd);
     if (entry->abtioi && entry->abtioi != entry->provider->aid)
         abt_io_finalize(entry->abtioi);
-    free(entry->filename);
-    free(entry->root);
+    free(entry->path);
+    ABT_mutex_free(&entry->file_root_mutex);
+
     free(entry);
 
     return BAKE_SUCCESS;
@@ -373,13 +501,18 @@ bake_file_create(backend_context_t context, size_t size, bake_region_id_t* rid)
     assert(sizeof(file_region_id_t) <= BAKE_REGION_ID_DATA_SIZE);
 
     /* round up size for directio alignment */
-    size = BAKE_ALIGN_UP(size, entry->log_alignment);
+    size = BAKE_ALIGN_UP(size, entry->file_root->alignment);
 
     frid->log_entry_size = size;
-    ABT_mutex_lock(entry->log_offset_mutex);
-    frid->log_entry_offset = entry->log_offset;
-    entry->log_offset += size;
-    ABT_mutex_unlock(entry->log_offset_mutex);
+
+    ABT_mutex_lock(entry->file_root_mutex);
+    frid->log_index     = entry->next_log_idx;
+    entry->next_log_idx = (entry->next_log_idx + 1) % entry->file_root->nlogs;
+    frid->log_entry_offset = entry->file_root->log_offsets[frid->log_index];
+    entry->file_root->log_offsets[frid->log_index] += size;
+    ABT_mutex_unlock(entry->file_root_mutex);
+
+    /* TODO: replace this; track sizes in root superblock at runtime */
 
     /* We write one empty block at the end of the log extent covered by this
      * region.  The goal is to extend the log file length (if
@@ -394,20 +527,21 @@ bake_file_create(backend_context_t context, size_t size, bake_region_id_t* rid)
      *
      * We write a full block to make sure it will work with O_DIRECT.
      */
-    ret = posix_memalign(&zero_block, entry->log_alignment,
-                         entry->log_alignment);
+    ret = posix_memalign(&zero_block, entry->file_root->alignment,
+                         entry->file_root->alignment);
     if (ret != 0) return (BAKE_ERR_IO);
 
-    ret = abt_io_pwrite(entry->abtioi, entry->log_fd, zero_block,
-                        entry->log_alignment,
-                        entry->log_offset - entry->log_alignment);
-    if (ret != entry->log_alignment) {
+    ret = abt_io_pwrite(entry->abtioi, entry->log_fds[frid->log_index],
+                        zero_block, entry->file_root->alignment,
+                        frid->log_entry_offset + size
+                            - entry->file_root->alignment);
+    if (ret != entry->file_root->alignment) {
         free(zero_block);
         return (BAKE_ERR_IO);
     }
 
     if (entry->sync) {
-        ret = abt_io_fdatasync(entry->abtioi, entry->log_fd);
+        ret = abt_io_fdatasync(entry->abtioi, entry->log_fds[frid->log_index]);
         if (ret != 0) {
             free(zero_block);
             return (BAKE_ERR_IO);
@@ -457,16 +591,17 @@ static int bake_file_write_raw(backend_context_t context,
         return BAKE_ERR_OUT_OF_BOUNDS;
     }
 
-    ret = posix_memalign(&bounce_buffer, entry->log_alignment,
-                         BAKE_ALIGN_UP(size, entry->log_alignment));
+    ret = posix_memalign(&bounce_buffer, entry->file_root->alignment,
+                         BAKE_ALIGN_UP(size, entry->file_root->alignment));
     if (ret != 0) return (BAKE_ERR_IO);
 
     memcpy(bounce_buffer, data, size);
 
-    ret = abt_io_pwrite(entry->abtioi, entry->log_fd, bounce_buffer,
-                        BAKE_ALIGN_UP(size, entry->log_alignment),
+    ret = abt_io_pwrite(entry->abtioi, entry->log_fds[frid->log_index],
+                        bounce_buffer,
+                        BAKE_ALIGN_UP(size, entry->file_root->alignment),
                         frid->log_entry_offset);
-    if (ret != entry->log_alignment) {
+    if (ret != entry->file_root->alignment) {
         free(bounce_buffer);
         return (BAKE_ERR_IO);
     }
@@ -501,7 +636,8 @@ static int bake_file_write_bulk(backend_context_t context,
         return (BAKE_ERR_OP_UNSUPPORTED);
     }
 
-    ret = transfer_data(entry, frid->log_entry_offset, frid->log_entry_size,
+    ret = transfer_data(entry, entry->log_fds[frid->log_index],
+                        frid->log_entry_offset, frid->log_entry_size,
                         region_offset, bulk, bulk_offset, size, source,
                         TRANSFER_DATA_WRITE);
 
@@ -509,13 +645,13 @@ static int bake_file_write_bulk(backend_context_t context,
 }
 
 /* utility function used to free bounce buffers created by
- * bake_file_read_raw().  It is like a normal fre() except that it must
+ * bake_file_read_raw().  It is like a normal free() except that it must
  * round down to block alignment to find the correct pointer to free.
  */
 static void bake_file_read_raw_free(backend_context_t context, void* ptr)
 {
     bake_file_entry_t* entry = (bake_file_entry_t*)context;
-    free((void*)(BAKE_ALIGN_DOWN(ptr, entry->log_alignment)));
+    free((void*)(BAKE_ALIGN_DOWN(ptr, entry->file_root->alignment)));
     return;
 }
 
@@ -555,18 +691,20 @@ static int bake_file_read_raw(backend_context_t context,
     natural_offset_end   = natural_offset_start + size;
     /* align both to find log extent */
     log_offset_start
-        = BAKE_ALIGN_DOWN(natural_offset_start, entry->log_alignment);
-    log_offset_end = BAKE_ALIGN_UP(natural_offset_end, entry->log_alignment);
+        = BAKE_ALIGN_DOWN(natural_offset_start, entry->file_root->alignment);
+    log_offset_end
+        = BAKE_ALIGN_UP(natural_offset_end, entry->file_root->alignment);
 
     /* create aligned bounce buffer large enough to hold log extent */
-    ret = posix_memalign(&bounce_buffer, entry->log_alignment,
+    ret = posix_memalign(&bounce_buffer, entry->file_root->alignment,
                          log_offset_end - log_offset_start);
     if (ret != 0) return (BAKE_ERR_IO);
 
     /* read extent from log */
-    ret = abt_io_pread(entry->abtioi, entry->log_fd, bounce_buffer,
-                       log_offset_end - log_offset_start, log_offset_start);
-    if (ret != entry->log_alignment) {
+    ret = abt_io_pread(entry->abtioi, entry->log_fds[frid->log_index],
+                       bounce_buffer, log_offset_end - log_offset_start,
+                       log_offset_start);
+    if (ret != entry->file_root->alignment) {
         free(bounce_buffer);
         return (BAKE_ERR_IO);
     }
@@ -596,7 +734,8 @@ static int bake_file_read_bulk(backend_context_t context,
     file_region_id_t*  frid  = (file_region_id_t*)rid.data;
     int                ret;
 
-    ret = transfer_data(entry, frid->log_entry_offset, frid->log_entry_size,
+    ret = transfer_data(entry, entry->log_fds[frid->log_index],
+                        frid->log_entry_offset, frid->log_entry_size,
                         region_offset, bulk, bulk_offset, size, source,
                         TRANSFER_DATA_READ);
 
@@ -610,13 +749,14 @@ static int bake_file_persist(backend_context_t context,
 {
     bake_file_entry_t* entry = (bake_file_entry_t*)context;
     int                ret;
+    file_region_id_t*  frid = (file_region_id_t*)rid.data;
 
     if (entry->sync) {
         /* NOTE: the size and offset doesn't matter.  There isn't any reasonably
          * portable function that can be used to sync portion of a log; we have
          * to sync the whole thing.
          */
-        ret = abt_io_fdatasync(entry->abtioi, entry->log_fd);
+        ret = abt_io_fdatasync(entry->abtioi, entry->log_fds[frid->log_index]);
         if (ret != 0) return (BAKE_ERR_IO);
     }
 
@@ -658,7 +798,7 @@ static int bake_file_remove(backend_context_t context, bake_region_id_t rid)
      * The log could be defragmented, but that would be a higher level
      * opertion.
      */
-    ret = abt_io_fallocate(entry->abtioi, entry->log_fd,
+    ret = abt_io_fallocate(entry->abtioi, entry->log_fds[frid->log_index],
                            FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE,
                            frid->log_entry_offset, frid->log_entry_size);
 
@@ -683,18 +823,32 @@ static int bake_file_create_fileset(backend_context_t context,
 {
     bake_file_entry_t* entry = (bake_file_entry_t*)context;
     int                ret;
+    char               log_name[256] = {0};
+    int                i;
+
     /* create a fileset */
-    ret = remi_fileset_create("bake", entry->root, fileset);
+    ret = remi_fileset_create("bake", entry->path, fileset);
     if (ret != REMI_SUCCESS) {
         ret = BAKE_ERR_REMI;
         goto error;
     }
 
     /* fill the fileset */
-    ret = remi_fileset_register_file(*fileset, entry->filename);
+    /* superblock first */
+    ret = remi_fileset_register_file(*fileset, "bake-file-root");
     if (ret != REMI_SUCCESS) {
         ret = BAKE_ERR_REMI;
         goto error;
+    }
+    /* all logs */
+    for (i = 0; i < entry->file_root->nlogs; i++) {
+        /* note that log name does not include directory path here */
+        snprintf(log_name, 256, "log.%d", i);
+        ret = remi_fileset_register_file(*fileset, log_name);
+        if (ret != REMI_SUCCESS) {
+            ret = BAKE_ERR_REMI;
+            goto error;
+        }
     }
 
 finish:
@@ -730,6 +884,7 @@ bake_backend g_bake_file_backend = {
 
 /* common utility function for relaying data in read_bulk/write_bulk */
 static int transfer_data(bake_file_entry_t* entry,
+                         int                fd,
                          off_t              log_entry_offset,
                          size_t             log_entry_size,
                          uint64_t           region_offset,
@@ -753,14 +908,15 @@ static int transfer_data(bake_file_entry_t* entry,
     /* where in the log do we stop access? */
     log_end_offset
         = log_entry_offset + region_offset + bulk_size - remote_bulk_offset;
-    log_end_offset = BAKE_ALIGN_UP(log_end_offset, entry->log_alignment);
+    log_end_offset = BAKE_ALIGN_UP(log_end_offset, entry->file_root->alignment);
 
     xargs.entry            = entry;
     xargs.remote_addr      = src_addr;
     xargs.remote_bulk      = remote_bulk;
     xargs.remote_offset    = remote_bulk_offset;
     xargs.log_entry_offset = BAKE_ALIGN_DOWN(log_entry_offset + region_offset,
-                                             entry->log_alignment);
+                                             entry->file_root->alignment);
+    xargs.fd               = fd;
     xargs.log_entry_size   = log_end_offset - xargs.log_entry_offset;
     xargs.log_issued       = 0;
     xargs.log_retired      = 0;
@@ -903,16 +1059,16 @@ static void xfer_ult(void* _args)
             }
 
             /* relay to log */
-            ret = abt_io_pwrite(args->entry->abtioi, args->entry->log_fd,
-                                local_bulk_ptr, this_log_size, this_log_offset);
+            ret = abt_io_pwrite(args->entry->abtioi, args->fd, local_bulk_ptr,
+                                this_log_size, this_log_offset);
             if (ret != this_log_size && args->ret == 0) {
                 args->ret = ret;
                 goto finished;
             }
         } else if (args->op_flag == TRANSFER_DATA_READ) {
             /* read from log */
-            ret = abt_io_pread(args->entry->abtioi, args->entry->log_fd,
-                               local_bulk_ptr, this_log_size, this_log_offset);
+            ret = abt_io_pread(args->entry->abtioi, args->fd, local_bulk_ptr,
+                               this_log_size, this_log_offset);
             if (ret != this_log_size && args->ret == 0) {
                 args->ret = ret;
                 goto finished;
