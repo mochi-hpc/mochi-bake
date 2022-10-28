@@ -8,6 +8,8 @@
 #include <assert.h>
 #include <unistd.h>
 #include <uuid/uuid.h>
+#include <stdlib.h>
+
 #include <margo.h>
 #include <libpmemobj.h>
 #include <bake-client.h>
