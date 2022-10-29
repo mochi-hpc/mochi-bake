@@ -946,7 +946,7 @@ static void bake_migrate_target_ult(hg_handle_t handle)
     /* issue the migration */
     int status = 0;
     ret        = remi_fileset_migrate(remi_ph, local_fileset, in.dest_root,
-                               in.remove_src, REMI_USE_ABTIO, &status);
+                                      in.remove_src, REMI_USE_ABTIO, &status);
     if (ret != REMI_SUCCESS) {
         out.ret = BAKE_ERR_REMI;
         goto finish;
@@ -1001,6 +1001,8 @@ static void bake_server_finalize_cb(void* data)
     bake_provider_detach_all_targets(provider);
 
     json_object_put(provider->json_cfg);
+
+    if (provider->poolset) margo_bulk_poolset_destroy(provider->poolset);
 
     ABT_rwlock_free(&(provider->lock));
 
