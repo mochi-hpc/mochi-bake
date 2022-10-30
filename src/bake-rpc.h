@@ -115,17 +115,19 @@ MERCURY_GEN_PROC(bake_remove_out_t, ((int32_t)(ret)))
 /* BAKE migrate region */
 MERCURY_GEN_PROC(
     bake_migrate_region_in_t,
-    ((bake_target_id_t)(bti))((bake_region_id_t)(source_rid))((uint64_t)(
-        region_size))((int32_t)(remove_src))((hg_const_string_t)(dest_addr))(
-        (uint16_t)(dest_provider_id))((bake_target_id_t)(dest_target_id)))
+    ((bake_target_id_t)(bti))((bake_region_id_t)(source_rid))(
+        (uint64_t)(region_size))((int32_t)(remove_src))(
+        (hg_const_string_t)(dest_addr))((uint16_t)(dest_provider_id))(
+        (bake_target_id_t)(dest_target_id)))
 MERCURY_GEN_PROC(bake_migrate_region_out_t,
                  ((int32_t)(ret))((bake_region_id_t)(dest_rid)))
 
 /* BAKE migrate target */
-MERCURY_GEN_PROC(bake_migrate_target_in_t,
-                 ((bake_target_id_t)(bti))((int32_t)(remove_src))(
-                     (hg_const_string_t)(dest_remi_addr))((uint16_t)(
-                     dest_remi_provider_id))((hg_const_string_t)(dest_root)))
+MERCURY_GEN_PROC(
+    bake_migrate_target_in_t,
+    ((bake_target_id_t)(bti))((int32_t)(remove_src))(
+        (hg_const_string_t)(dest_remi_addr))((uint16_t)(dest_remi_provider_id))(
+        (hg_const_string_t)(dest_root)))
 MERCURY_GEN_PROC(bake_migrate_target_out_t, ((int32_t)(ret)))
 
 static inline hg_return_t hg_proc_bake_region_id_t(hg_proc_t         proc,
@@ -162,7 +164,9 @@ static inline hg_return_t hg_proc_bake_eager_write_in_t(hg_proc_t proc,
     hg_proc_bake_region_id_t(proc, &in->rid);
     hg_proc_uint64_t(proc, &in->region_offset);
     hg_proc_uint64_t(proc, &in->size);
-    if (in->size) {
+    if (in->size
+        && (hg_proc_get_op(proc) == HG_ENCODE
+            || hg_proc_get_op(proc) == HG_DECODE)) {
         buf = hg_proc_save_ptr(proc, in->size);
         if (hg_proc_get_op(proc) == HG_ENCODE)
             memcpy(buf, in->buffer, in->size);
@@ -182,7 +186,9 @@ hg_proc_bake_eager_create_write_persist_in_t(hg_proc_t proc, void* v_out_p)
 
     hg_proc_bake_target_id_t(proc, &in->bti);
     hg_proc_uint64_t(proc, &in->size);
-    if (in->size) {
+    if (in->size
+        && (hg_proc_get_op(proc) == HG_ENCODE
+            || hg_proc_get_op(proc) == HG_DECODE)) {
         buf = hg_proc_save_ptr(proc, in->size);
         if (hg_proc_get_op(proc) == HG_ENCODE)
             memcpy(buf, in->buffer, in->size);
@@ -202,7 +208,9 @@ static inline hg_return_t hg_proc_bake_eager_read_out_t(hg_proc_t proc,
 
     hg_proc_int32_t(proc, &out->ret);
     hg_proc_uint32_t(proc, &out->size);
-    if (out->size) {
+    if (out->size
+        && (hg_proc_get_op(proc) == HG_ENCODE
+            || hg_proc_get_op(proc) == HG_DECODE)) {
         buf = hg_proc_save_ptr(proc, out->size);
         if (hg_proc_get_op(proc) == HG_ENCODE)
             memcpy(buf, out->buffer, out->size);
@@ -220,7 +228,9 @@ static inline hg_return_t hg_proc_bake_probe_out_t(hg_proc_t proc, void* data)
 
     hg_proc_int32_t(proc, &out->ret);
     hg_proc_uint64_t(proc, &out->num_targets);
-    if (out->num_targets) {
+    if (out->num_targets
+        && (hg_proc_get_op(proc) == HG_ENCODE
+            || hg_proc_get_op(proc) == HG_DECODE)) {
         buf = hg_proc_save_ptr(proc,
                                out->num_targets * sizeof(bake_target_id_t));
         if (hg_proc_get_op(proc) == HG_ENCODE)
