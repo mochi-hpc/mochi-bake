@@ -54,8 +54,9 @@ static int bake_register_provider(bedrock_args_t             args,
     BAKE_TRACE(mid, " -> remi_client   = %p", bpargs.remi_client);
 
     bpargs.json_config = config;
+    bpargs.rpc_pool    = pool;
     ret                = bake_provider_register(mid, provider_id, &bpargs,
-                                 (bake_provider_t*)provider);
+                                                (bake_provider_t*)provider);
     if (ret < 0) return (-1);
 
     return BEDROCK_SUCCESS;

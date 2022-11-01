@@ -143,6 +143,7 @@ int bake_provider_register(margo_instance_id                     mid,
     else {
         margo_get_handler_pool(mid, &(tmp_provider->handler_pool));
     }
+    BAKE_DEBUG(mid, "using handler pool %p", tmp_provider->handler_pool);
 
     /* create buffer poolset if needed for config */
     ret = setup_poolset(tmp_provider);
