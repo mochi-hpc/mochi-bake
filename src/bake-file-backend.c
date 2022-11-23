@@ -600,6 +600,13 @@ static int bake_file_read_bulk(backend_context_t context,
     ret = transfer_data(entry, frid->log_entry_offset, frid->log_entry_size,
                         region_offset, bulk, bulk_offset, size, source,
                         TRANSFER_DATA_READ);
+    /* file backend will not produce short reads; it is an error to attempt
+     * to read more than is present in a bulk region.
+     */
+    if (ret == BAKE_SUCCESS)
+        *bytes_read = size;
+    else
+        *bytes_read = 0;
 
     return (ret);
 }
