@@ -4,9 +4,9 @@ libdir=@libdir@
 includedir=@includedir@
 
 Name: bake-client
-Description: bulk data access service, client side
-Version: 0.3.4
-URL: https://xgitlab.cels.anl.gov/sds/bake
+Description: Bulk data access service for Mochi, client side
+Version: @PACKAGE_VERSION@
+URL: https://github.com/mochi-hpc/mochi-bake
 Requires: margo uuid
 Libs: -L${libdir} -lbake-client
 Cflags: -I${includedir}
