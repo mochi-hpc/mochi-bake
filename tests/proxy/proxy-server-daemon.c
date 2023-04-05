@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <assert.h>
 #include <unistd.h>
-#include <uuid/uuid.h>
 #include <stdlib.h>
 
 #include <margo.h>
