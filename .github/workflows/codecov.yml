@@ -50,14 +50,15 @@ jobs:
       run: |
         sudo /usr/sbin/sysctl kernel.yama.ptrace_scope=0
 
-    - name: Build code run unit tests
+    - name: Rebuild code and run unit tests with coverage enabled
       run: |
         eval `spack env activate --sh .` &&
         ./prepare.sh &&
-        ./configure --prefix=`pwd` &&
+        ./configure --enable-coverage --prefix=`pwd` &&
         make check
 
-    - name: Show logs
-      if: failure()
-      run: |
-        cat tests/*.log
+    - uses: codecov/codecov-action@v3
+      with:
+        fail_ci_if_error: true
+        verbose: true
+        gcov: true
