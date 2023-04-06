@@ -21,17 +21,22 @@ extern "C" {
 
 typedef struct bake_provider* bake_provider_t;
 
+/* forward-declared remi handles so we don't have to
+ * include remi headers if remi is not enabled. */
+typedef struct remi_client* remi_client_t;
+typedef struct remi_provider* remi_provider_t;
+
 /**
  * The bake_provider_init_info structure can be passed in to the
  * bake_provider_register() function to configure the provider. The struct
  * can be memset to zero to use default values.
  */
 struct bake_provider_init_info {
-    const char* json_config; /* optional JSON-formatted string */
-    ABT_pool    rpc_pool;    /* optional pool on which to run RPC handlers */
-    abt_io_instance_id aid; /* optional abt-io instance, used by file backend */
-    void*              remi_provider; /* optional REMI provider */
-    void*              remi_client;   /* optional REMI client */
+    const char*        json_config;   /* optional JSON-formatted string */
+    ABT_pool           rpc_pool;      /* optional pool on which to run RPC handlers */
+    abt_io_instance_id aid;           /* optional abt-io instance, used by file backend */
+    remi_provider_t    remi_provider; /* optional REMI provider */
+    remi_client_t      remi_client;   /* optional REMI client */
 };
 
 /**
@@ -69,8 +74,7 @@ struct bake_provider_init_info {
  *
  * @param[in] mid Margo instance identifier
  * @param[in] provider_id provider id
- * @param[in] pool Pool on which to run the RPC handlers
- * @param[in] target_name path to PMEM backend file
+ * @param[in] args Optional arguments
  * @param[out] provider resulting provider
  * @returns 0 on success, -1 otherwise
  */
@@ -84,7 +88,7 @@ int bake_provider_register(margo_instance_id                     mid,
  *
  * @param provider Provider to deregister.
  *
- * @return 0 on success, -1 otherwise.
+ * @return BAKE_SUCCESS or BAKE_ERR*
  */
 int bake_provider_deregister(bake_provider_t provider);
 
@@ -106,7 +110,7 @@ int bake_provider_attach_target(bake_provider_t   provider,
  * Create a new target that did not yet exist and begin managing it.
  *
  * @param provider Bake provider
- * @param target_name path to pmem target
+ * @param target_name path to target
  * @param[in] size size of the created target (may be ignored for target
  * types that can be extended or use a fixed size physical device)
  * @param target_id resulting id identifying the target
