@@ -9,7 +9,6 @@ spack:
   - jsoncpp
   - libtool
   - mochi-remi
-  - mpi
   - pmdk
   concretizer:
     unify: true
