@@ -53,6 +53,11 @@ jobs:
         ./configure --prefix=`pwd` &&
         make check
 
+    - name: Show logs
+      if: failure()
+      run: |
+        cat tests/*.log
+
     - name: Rebuild code and run unit tests with coverage enabled
       run: |
         eval `spack env activate --sh .` &&
