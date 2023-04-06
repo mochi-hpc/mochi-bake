@@ -11,6 +11,7 @@ spack:
   - mochi-remi
   - pmdk
   - mercury~boostsys ^libfabric fabrics=tcp,rxm
+  - mpich
   concretizer:
     unify: true
   modules:
