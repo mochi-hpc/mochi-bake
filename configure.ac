@@ -175,5 +175,20 @@ AC_ARG_ENABLE([timers],
     [AC_MSG_ERROR([bad value ${enableval} for --enable-timers])])],
     [enable_timers=no])
 
+AC_ARG_ENABLE(coverage,
+              [AS_HELP_STRING([--enable-coverage],[Enable code coverage @<:@default=no@:>@])],
+              [case "${enableval}" in
+                yes) enable_coverage="yes" ;;
+                no) enable_coverage="no" ;;
+                *) AC_MSG_ERROR(bad value ${enableval} for --enable-coverage) ;;
+               esac],
+              [enable_coverage="no"]
+)
+
+if test "$enable_coverage" = "yes" ; then
+    CPPFLAGS="$CPPFLAGS --coverage -O0"
+    LDFLAGS="$LDFLAGS --coverage -lgcov"
+fi
+
 AC_CONFIG_FILES([Makefile maint/bake-client.pc maint/bake-server.pc])
 AC_OUTPUT
