@@ -1,13 +1,13 @@
 #                                               -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-AC_PREREQ([2.63])
-AC_INIT([bake], [0.6.4], [],[],[])
+AC_PREREQ([2.71])
+AC_INIT([bake],[0.6.4],[],[],[])
 AC_CONFIG_MACRO_DIR([m4])
 LT_INIT
 
 AC_CANONICAL_TARGET
-AC_CANONICAL_SYSTEM
+AC_CANONICAL_TARGET
 AC_CANONICAL_HOST
 
 AM_INIT_AUTOMAKE([foreign subdir-objects -Wall])
