@@ -1,7 +1,7 @@
 #                                               -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-AC_PREREQ([2.71])
+AC_PREREQ([2.69])
 AC_INIT([bake],[0.6.4],[],[],[])
 AC_CONFIG_MACRO_DIR([m4])
 LT_INIT
