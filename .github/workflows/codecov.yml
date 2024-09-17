@@ -61,3 +61,4 @@ jobs:
         fail_ci_if_error: true
         verbose: true
         gcov: true
+        token: ${{ secrets.CODECOV_TOKEN }}
