@@ -1,0 +1,28 @@
+spack:
+  specs:
+  - mochi-margo
+  - mochi-bedrock
+  - uuid
+  - mochi-abt-io
+  - autoconf
+  - automake
+  - jsoncpp
+  - json-c
+  - libtool
+  - mochi-remi
+  - pmdk
+  - mercury~boostsys ^libfabric fabrics=tcp,rxm
+  - mpich
+  concretizer:
+    unify: true
+  modules:
+    prefix_inspections:
+      lib: [LD_LIBRARY_PATH]
+      lib64: [LD_LIBRARY_PATH]
+  mirrors:
+    mochi-buildcache:
+      url: oci://ghcr.io/mochi-hpc/mochi-spack-buildcache
+      signed: false
+  config:
+    install_tree:
+      padded_length: 128

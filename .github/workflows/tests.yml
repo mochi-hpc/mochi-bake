@@ -21,39 +21,29 @@ jobs:
       with:
         ref: develop
 
-    - name: Install MPI
+    - name: Set install root for Spack
       run: |
-        sudo apt install -y libmpich-dev
-
-    - name: Find external packages
-      run: |
-        spack -e . external find --not-buildable cmake
-        spack -e . external find --not-buildable perl
-        spack -e . external find --not-buildable mpich
+        spack -e tests config add config:install_tree:root:/opt/spack
+        spack -e tests config add view:/opt/view
 
     - name: Add mochi-spack-packages
       run: |
-        git clone https://github.com/mochi-hpc/mochi-spack-packages /opt/spack/mochi-spack-packages
-        spack -e . repo add /opt/spack/mochi-spack-packages
+        git clone https://github.com/mochi-hpc/mochi-spack-packages
+        spack -e tests repo add mochi-spack-packages
 
     - name: Install spack environment
       run: |
-        spack -e . concretize -f
-        spack -e . install
+        spack -e tests install
 
     - name: Show spack-installed packages for debugging
       run: |
-        spack -e . find -dlv
-
-    - name: Hack to make na+sm work
-      run: |
-        sudo /usr/sbin/sysctl kernel.yama.ptrace_scope=0
+        spack -e tests find -dlv
 
     - name: Build code run unit tests
       run: |
-        eval `spack env activate --sh .` &&
-        ./prepare.sh &&
-        ./configure --prefix=`pwd` &&
+        eval `spack env activate --sh tests`
+        ./prepare.sh
+        ./configure --prefix=`pwd`
         make check
 
     - name: Show logs
